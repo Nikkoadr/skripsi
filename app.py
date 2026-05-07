@@ -1,25 +1,38 @@
 import time
 import json
 import threading
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 import mysql.connector
 from mysql.connector import Error
 import paho.mqtt.client as mqtt
 
+# Memuat variabel dari file .env
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_monitoring'  # Change this in production
 
-# --- CONFIGURATION ---
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASS = ""
-DB_NAME = "monitoring_server_room"
+# --- CONFIGURATION DARI .ENV ---
+# Flask
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
+APP_HOST = os.getenv('FLASK_HOST', '0.0.0.0')
+APP_PORT = int(os.getenv('FLASK_PORT', 5000))
 
-MQTT_BROKER = "192.168.1.16"
-MQTT_PORT = 1883
-MQTT_TOPIC = "220511203/monitoring/server/data"
+# Database
+DB_HOST = os.getenv('DB_HOST')
+DB_USER = os.getenv('DB_USER')
+DB_PASS = os.getenv('DB_PASS', '')
+DB_NAME = os.getenv('DB_NAME')
+
+# MQTT
+MQTT_BROKER = os.getenv('MQTT_BROKER')
+MQTT_PORT = int(os.getenv('MQTT_PORT', 1883))
+MQTT_USERNAME = os.getenv('MQTT_USERNAME')
+MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+MQTT_TOPIC = os.getenv('MQTT_TOPIC')
 
 # Setup Flask-Login
 login_manager = LoginManager()
@@ -56,7 +69,8 @@ def load_user(user_id):
         cursor.close()
         conn.close()
         if user_record:
-            return User(id=user_record['id'], nama=user_record['nama'], email=user_record['email'], role=user_record['role'])
+            return User(id=user_record['id'], nama=user_record['nama'], 
+                        email=user_record['email'], role=user_record['role'])
     return None
 
 # --- MQTT BACKGROUND THREAD ---
@@ -72,7 +86,6 @@ def on_mqtt_message(client, userdata, msg):
         payload = msg.payload.decode('utf-8')
         data = json.loads(payload)
         
-        # Save to database
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor()
@@ -91,29 +104,30 @@ def on_mqtt_message(client, userdata, msg):
             conn.commit()
             cursor.close()
             conn.close()
-        # Note: Event trigger logic can also be placed here if needed.
     except Exception as e:
-        print(f"[MQTT] Error parsing message: {e}")
+        print(f"[MQTT] Error processing message: {e}")
 
 def mqtt_worker():
-    # Paho mqtt v2.0+ requires CallbackAPIVersion
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "Flask_Backend_Monitor")
+    
+    if MQTT_USERNAME and MQTT_PASSWORD:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+        
     client.on_connect = on_mqtt_connect
     client.on_message = on_mqtt_message
     
     while True:
         try:
-            print(f"[MQTT] Attempting to connect to {MQTT_BROKER}...")
+            print(f"[MQTT] Connecting to {MQTT_BROKER}:{MQTT_PORT}...")
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
-            print(f"[MQTT] Connection lost or failed: {e}. Retrying in 5 seconds...")
+            print(f"[MQTT] Connection lost: {e}. Retrying in 5 seconds...")
             time.sleep(5)
 
-# Start MQTT thread before handling requests (only in main process)
+# Start MQTT thread
 mqtt_thread = threading.Thread(target=mqtt_worker, daemon=True)
 mqtt_thread.start()
-
 
 # --- ROUTES ---
 
@@ -134,15 +148,15 @@ def login():
             cursor.close()
             conn.close()
             
-            # Since the user requested using existing DB, and dummy data uses plain text for password 'admin123'
             if user and user['password'] == password:
-                user_obj = User(id=user['id'], nama=user['nama'], email=user['email'], role=user['role'])
+                user_obj = User(id=user['id'], nama=user['nama'], 
+                                email=user['email'], role=user['role'])
                 login_user(user_obj)
                 return redirect(url_for('index'))
             else:
                 flash('Email atau password salah!', 'danger')
         else:
-            flash('Gagal mengambil data dari database.', 'danger')
+            flash('Gagal terhubung ke database.', 'danger')
             
     return render_template('login.html')
 
@@ -177,7 +191,6 @@ def events():
     events_data = []
     if conn:
         cursor = conn.cursor(dictionary=True)
-        # JOIN with users to get the user who might have triggered or is assigned to event (if needed)
         query = """
             SELECT e.*, u.nama as nama_user 
             FROM event_logs e 
@@ -190,8 +203,6 @@ def events():
         conn.close()
     return render_template('events.html', events=events_data)
 
-# --- API ROUTES FOR AJAX/CHART ---
-
 @app.route('/api/latest')
 @login_required
 def api_latest():
@@ -203,7 +214,6 @@ def api_latest():
         cursor.close()
         conn.close()
         if latest:
-            # Need to convert datetime to string
             latest['created_at'] = latest['created_at'].strftime('%Y-%m-%d %H:%M:%S')
             return jsonify(latest)
     return jsonify({})
@@ -214,32 +224,25 @@ def api_chart():
     conn = get_db_connection()
     if conn:
         cursor = conn.cursor(dictionary=True)
-        # Fetch last 30 entries for the chart, reverse them so oldest to newest left to right
         query = "SELECT * FROM (SELECT * FROM monitoring_logs ORDER BY id DESC LIMIT 30) sub ORDER BY id ASC"
         cursor.execute(query)
         records = cursor.fetchall()
         cursor.close()
         conn.close()
         
-        labels = []
-        suhu = []
-        watt = []
-        amper = []
-        
-        for r in records:
-            labels.append(r['created_at'].strftime('%H:%M'))
-            suhu.append(r['suhu'])
-            watt.append(r['daya_watt'])
-            amper.append(r['arus_listrik'])
-            
-        return jsonify({
-            'labels': labels,
-            'suhu': suhu,
-            'watt': watt,
-            'amper': amper
-        })
+        data = {
+            'labels': [r['created_at'].strftime('%H:%M') for r in records],
+            'suhu': [r['suhu'] for r in records],
+            'watt': [r['daya_watt'] for r in records],
+            'amper': [r['arus_listrik'] for r in records]
+        }
+        return jsonify(data)
     return jsonify({})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
-
+    app.run(
+        debug=True, 
+        host=APP_HOST, 
+        port=APP_PORT, 
+        use_reloader=False
+    )
