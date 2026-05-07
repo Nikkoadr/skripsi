@@ -1,4 +1,3 @@
-```python
 import time
 import json
 import threading
@@ -593,4 +592,3 @@ if __name__ == '__main__':
         port=APP_PORT,
         use_reloader=False
     )
-```
