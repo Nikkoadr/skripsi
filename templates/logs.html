@@ -43,7 +43,6 @@
                     <th>Arus (A)</th>
                     <th>Daya (W)</th>
                     <th>Status Pintu</th>
-                    <th>Power Status</th>
                 </tr>
             </thead>
             <tbody>
@@ -59,13 +58,6 @@
                             <span class="badge bg-danger rounded-pill px-2">Terbuka</span>
                         {% else %}
                             <span class="badge bg-success rounded-pill px-2">Tertutup</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if log.power_status == 'off' %}
-                            <span class="badge bg-danger rounded-pill px-2 text-uppercase">Off</span>
-                        {% else %}
-                            <span class="badge bg-success rounded-pill px-2 text-uppercase">On</span>
                         {% endif %}
                     </td>
                 </tr>
