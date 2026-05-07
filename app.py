@@ -49,19 +49,31 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
 APP_HOST = os.getenv('FLASK_HOST', '0.0.0.0')
-APP_PORT = int(os.getenv('FLASK_PORT', 5000))
+
+APP_PORT = int(
+    os.getenv('FLASK_PORT', 5000)
+)
 
 # Database
 DB_HOST = os.getenv('DB_HOST')
+
 DB_USER = os.getenv('DB_USER')
+
 DB_PASS = os.getenv('DB_PASS')
+
 DB_NAME = os.getenv('DB_NAME')
 
 # MQTT
 MQTT_BROKER = os.getenv('MQTT_BROKER')
-MQTT_PORT = int(os.getenv('MQTT_PORT', 1883))
+
+MQTT_PORT = int(
+    os.getenv('MQTT_PORT', 1883)
+)
+
 MQTT_USERNAME = os.getenv('MQTT_USERNAME')
+
 MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+
 MQTT_TOPIC = os.getenv('MQTT_TOPIC')
 
 # =========================================================
@@ -167,13 +179,22 @@ def on_mqtt_connect(client, userdata, flags, reason_code, properties=None):
 
     else:
 
-        print(f"[MQTT] Failed Connect -> {reason_code}")
+        print(
+            f"[MQTT] Failed Connect -> "
+            f"{reason_code}"
+        )
 
 # =========================================================
 # MQTT DISCONNECT
 # =========================================================
 
-def on_mqtt_disconnect(client, userdata, disconnect_flags, reason_code, properties=None):
+def on_mqtt_disconnect(
+    client,
+    userdata,
+    disconnect_flags,
+    reason_code,
+    properties=None
+):
 
     print("[MQTT] Disconnected")
 
@@ -236,6 +257,10 @@ def on_mqtt_message(client, userdata, msg):
 
             conn.close()
 
+        else:
+
+            print("[DATABASE] Insert Failed")
+
     except Exception as e:
 
         print(f"[ERROR] {e}")
@@ -246,6 +271,8 @@ def on_mqtt_message(client, userdata, msg):
 
 def mqtt_worker():
 
+    print("[MQTT] Worker Started")
+
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
         "Flask_Backend_Monitor"
@@ -253,6 +280,8 @@ def mqtt_worker():
 
     # MQTT AUTH
     if MQTT_USERNAME and MQTT_PASSWORD:
+
+        print("[MQTT] Authentication Enabled")
 
         client.username_pw_set(
             MQTT_USERNAME,
@@ -282,11 +311,16 @@ def mqtt_worker():
                 60
             )
 
+            print("[MQTT] Waiting Message...")
+
             client.loop_forever()
 
         except Exception as e:
 
-            print(f"[MQTT] Connection Lost -> {e}")
+            print(
+                f"[MQTT] Connection Lost -> "
+                f"{e}"
+            )
 
             print("[MQTT] Retry 5 seconds...")
 
@@ -578,13 +612,28 @@ def api_chart():
 if __name__ == '__main__':
 
     print("\n===================================")
+
     print(" MONITORING SERVER STARTING ")
+
     print("===================================\n")
 
     print(
         f"[FLASK] Running -> "
         f"{APP_HOST}:{APP_PORT}"
     )
+
+    # TEST DATABASE
+    test_db = get_db_connection()
+
+    if test_db:
+
+        print("[DATABASE] Connected")
+
+        test_db.close()
+
+    else:
+
+        print("[DATABASE] Failed")
 
     app.run(
         debug=True,
