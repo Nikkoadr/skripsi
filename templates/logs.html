@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block head %}
+<!-- DataTables CSS -->
+<link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
+        color: #475569 !important;
+        margin-bottom: 1rem;
+    }
+    .page-item.active .page-link {
+        background-color: #0284c7;
+        border-color: #0284c7;
+    }
+    .page-link {
+        background-color: #ffffff;
+        border-color: #e2e8f0;
+        color: #64748b;
+    }
+    .page-link:hover {
+        background-color: #f8fafc;
+        color: #0f172a;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-0">Monitoring Logs</h3>
+        <p class="text-secondary mb-0">Historical Sensor Data</p>
+    </div>
+</div>
+
+<div class="glass-card p-4">
+    <div class="table-responsive">
+        <table id="logsTable" class="table custom-table align-middle">
+            <thead>
+                <tr>
+                    <th>Waktu (Created At)</th>
+                    <th>Suhu (°C)</th>
+                    <th>Kelembapan (%)</th>
+                    <th>Arus (A)</th>
+                    <th>Daya (W)</th>
+                    <th>Status Pintu</th>
+                    <th>Power Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td><span class="badge bg-secondary bg-opacity-50 border border-secondary">{{ "%.1f"|format(log.suhu) }}</span></td>
+                    <td>{{ "%.1f"|format(log.kelembapan) }}</td>
+                    <td>{{ "%.2f"|format(log.arus_listrik) }}</td>
+                    <td><span class="text-info fw-semibold">{{ "%.0f"|format(log.daya_watt) }}</span></td>
+                    <td>
+                        {% if log.status_pintu == 'terbuka' %}
+                            <span class="badge bg-danger rounded-pill px-2">Terbuka</span>
+                        {% else %}
+                            <span class="badge bg-success rounded-pill px-2">Tertutup</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.power_status == 'off' %}
+                            <span class="badge bg-danger rounded-pill px-2 text-uppercase">Off</span>
+                        {% else %}
+                            <span class="badge bg-success rounded-pill px-2 text-uppercase">On</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+    $(document).ready(function() {
+        $('#logsTable').DataTable({
+            order: [[0, 'desc']],
+            pageLength: 25,
+            language: {
+                search: "_INPUT_",
+                searchPlaceholder: "Search records..."
+            }
+        });
+    });
+</script>
+{% endblock %}

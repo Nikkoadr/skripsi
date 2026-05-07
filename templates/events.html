@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block head %}
+<!-- DataTables CSS -->
+<link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
+        color: #475569 !important;
+        margin-bottom: 1rem;
+    }
+    .page-item.active .page-link {
+        background-color: #0284c7;
+        border-color: #0284c7;
+    }
+    .page-link {
+        background-color: #ffffff;
+        border-color: #e2e8f0;
+        color: #64748b;
+    }
+    .page-link:hover {
+        background-color: #f8fafc;
+        color: #0f172a;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-0">Event Logs</h3>
+        <p class="text-secondary mb-0">System Events & Alerts</p>
+    </div>
+</div>
+
+<div class="glass-card p-4">
+    <div class="table-responsive">
+        <table id="eventsTable" class="table custom-table align-middle">
+            <thead>
+                <tr>
+                    <th>Waktu (Mulai - Selesai)</th>
+                    <th>Event Type</th>
+                    <th>Deskripsi</th>
+                    <th>Nilai Limit</th>
+                    <th>Status</th>
+                    <th>Durasi (s)</th>
+                    <th>User / Actor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in events %}
+                <tr>
+                    <td>
+                        <div class="small fw-semibold text-dark">{{ event.waktu_mulai.strftime('%Y-%m-%d %H:%M:%S') if event.waktu_mulai else '-' }}</div>
+                        <div class="small text-secondary">{{ event.waktu_selesai.strftime('%Y-%m-%d %H:%M:%S') if event.waktu_selesai else 'Ongoing' }}</div>
+                    </td>
+                    <td><span class="fw-bold" style="color: #475569;">{{ event.event_type }}</span></td>
+                    <td>{{ event.deskripsi }}</td>
+                    <td>{{ event.nilai }}</td>
+                    <td>
+                        {% if event.status|lower == 'critical' %}
+                            <span class="badge bg-danger rounded-pill px-2">Critical</span>
+                        {% elif event.status|lower == 'warning' %}
+                            <span class="badge bg-warning text-dark rounded-pill px-2">Warning</span>
+                        {% else %}
+                            <span class="badge bg-info rounded-pill px-2">Normal</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ event.durasi if event.durasi else '-' }}</td>
+                    <td>
+                        <span class="badge bg-secondary bg-opacity-25 border border-secondary text-secondary">
+                        <i class="fa-regular fa-user me-1"></i> {{ event.nama_user if event.nama_user else 'System' }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+    $(document).ready(function() {
+        $('#eventsTable').DataTable({
+            order: [[0, 'desc']],
+            pageLength: 25,
+            language: {
+                search: "_INPUT_",
+                searchPlaceholder: "Search events..."
+            }
+        });
+    });
+</script>
+{% endblock %}

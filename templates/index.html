@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block head %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-0">Dashboard</h3>
+        <p class="text-secondary mb-0">Real-time Server Room Monitoring</p>
+    </div>
+    <div class="text-end">
+        <span class="badge bg-success rounded-pill px-3 py-2" id="conn-status">
+            <i class="fa-solid fa-circle-check me-1"></i> System Online
+        </span>
+        <p class="text-secondary small mt-1 mb-0" id="last-update">Last update: -</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- Suhu -->
+    <div class="col-md-6 col-xl-3">
+        <div class="glass-card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-secondary fw-semibold">Temperature</span>
+                <i class="fa-solid fa-temperature-half metric-icon icon-warning"></i>
+            </div>
+            <h2 class="metric-value"><span id="val-suhu">--</span> <span class="fs-5 text-secondary">°C</span></h2>
+        </div>
+    </div>
+    <!-- Kelembapan -->
+    <div class="col-md-6 col-xl-3">
+        <div class="glass-card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-secondary fw-semibold">Humidity</span>
+                <i class="fa-solid fa-droplet metric-icon icon-info"></i>
+            </div>
+            <h2 class="metric-value"><span id="val-lembab">--</span> <span class="fs-5 text-secondary">%</span></h2>
+        </div>
+    </div>
+    <!-- Arus / Daya -->
+    <div class="col-md-6 col-xl-3">
+        <div class="glass-card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-secondary fw-semibold">Power Load</span>
+                <i class="fa-solid fa-bolt metric-icon text-warning"></i>
+            </div>
+            <h2 class="metric-value"><span id="val-watt">--</span> <span class="fs-5 text-secondary">W</span></h2>
+            <div class="text-secondary small mt-1"><i class="fa-solid fa-plug me-1"></i> <span id="val-amper">--</span> A</div>
+        </div>
+    </div>
+    <!-- Status Pintu / Power -->
+    <div class="col-md-6 col-xl-3">
+        <div class="glass-card p-4 h-100 d-flex flex-column justify-content-center">
+            
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-secondary fw-semibold">Door Status</span>
+                <i class="fa-solid fa-door-closed metric-icon" id="icon-pintu" style="color: #475569;"></i>
+            </div>
+            <h4 class="fw-bold mb-3" id="val-pintu">--</h4>
+
+            <div class="d-flex justify-content-between align-items-center border-top border-secondary pt-3 mt-auto">
+                <span class="text-secondary fw-semibold small">Mains Power</span>
+                <span class="badge bg-success" id="val-power">ON</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="glass-card p-4">
+            <h5 class="fw-semibold mb-3">Power & Temperature Trends (Last 30 Records)</h5>
+            <div style="height: 350px;">
+                <canvas id="monitorChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize Chart
+    const ctx = document.getElementById('monitorChart').getContext('2d');
+    
+    // Gradient definitions
+    let gradientTemp = ctx.createLinearGradient(0, 0, 0, 400);
+    gradientTemp.addColorStop(0, 'rgba(245, 158, 11, 0.5)'); // Warning orange
+    gradientTemp.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+    
+    let gradientPower = ctx.createLinearGradient(0, 0, 0, 400);
+    gradientPower.addColorStop(0, 'rgba(56, 189, 248, 0.5)'); // Sky blue
+    gradientPower.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+
+    Chart.defaults.color = '#475569';
+    Chart.defaults.font.family = "'Outfit', sans-serif";
+
+    const monitorChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: '#f59e0b',
+                    backgroundColor: gradientTemp,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Power (Watt)',
+                    data: [],
+                    borderColor: '#38bdf8',
+                    backgroundColor: gradientPower,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { 
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    titleColor: '#1e293b',
+                    bodyColor: '#334155',
+                    borderColor: 'rgba(0, 0, 0, 0.1)',
+                    borderWidth: 1
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Temperature (°C)' },
+                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: { display: true, text: 'Power (W)' },
+                    grid: { drawOnChartArea: false }
+                }
+            }
+        }
+    });
+
+    // Function to fetch chart historical data
+    function loadChartData() {
+        $.getJSON('/api/chart', function(data) {
+            if(data.labels) {
+                monitorChart.data.labels = data.labels;
+                monitorChart.data.datasets[0].data = data.suhu;
+                monitorChart.data.datasets[1].data = data.watt;
+                monitorChart.update();
+            }
+        });
+    }
+
+    // Function to fetch latest data for metric cards (Polling)
+    function fetchLatestData() {
+        $.getJSON('/api/latest', function(data) {
+            if(data && Object.keys(data).length > 0) {
+                $('#val-suhu').text(data.suhu.toFixed(1));
+                $('#val-lembab').text(data.kelembapan.toFixed(1));
+                $('#val-watt').text(data.daya_watt.toFixed(0));
+                $('#val-amper').text(data.arus_listrik.toFixed(2));
+                
+                // Door Status logic
+                let isPintuTerbuka = (data.status_pintu.toLowerCase() == 'terbuka');
+                let pintuElem = $('#val-pintu');
+                let pintuIcon = $('#icon-pintu');
+                
+                if(isPintuTerbuka) {
+                    pintuElem.text('OPEN').removeClass('text-success').addClass('text-danger');
+                    pintuIcon.removeClass('fa-door-closed').addClass('fa-door-open icon-danger');
+                } else {
+                    pintuElem.text('CLOSED').removeClass('text-danger').addClass('text-success');
+                    pintuIcon.removeClass('fa-door-open icon-danger').addClass('fa-door-closed');
+                    pintuIcon.css('color', '#10b981'); // success color
+                }
+                
+                // Power Status logic
+                let powerStatus = data.power_status.toLowerCase();
+                let powerElem = $('#val-power');
+                if(powerStatus == 'off') {
+                    powerElem.text('OFF (ALERT)').removeClass('bg-success').addClass('bg-danger');
+                } else {
+                    powerElem.text('ON').removeClass('bg-danger').addClass('bg-success');
+                }
+
+                $('#last-update').text("Last update: " + data.created_at);
+            }
+        }).fail(function() {
+            $('#conn-status').removeClass('bg-success').addClass('bg-danger').html('<i class="fa-solid fa-triangle-exclamation me-1"></i> Offline');
+        });
+    }
+
+    // Initial load
+    loadChartData();
+    fetchLatestData();
+
+    // Auto-update intervals
+    setInterval(fetchLatestData, 2000); // 2 seconds update for meters
+    setInterval(loadChartData, 10000); // 10s update for chart
+</script>
+{% endblock %}

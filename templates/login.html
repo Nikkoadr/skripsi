@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="col-md-5 col-lg-4">
+        
+        <div class="text-center mb-4">
+            <h1 class="display-5" style="color: #0284c7;"><i class="fa-solid fa-server"></i></h1>
+            <h3 class="fw-bold">Server Room</h3>
+            <p class="text-secondary">IoT Monitoring System</p>
+        </div>
+
+        <div class="glass-card p-4 p-md-5">
+            <h4 class="mb-4 text-center fw-semibold">Sign In</h4>
+            
+            <form action="{{ url_for('login') }}" method="POST">
+                <div class="mb-4">
+                    <label class="form-label text-secondary small">Email Address</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-transparent border-secondary text-secondary"><i class="fa-solid fa-envelope"></i></span>
+                        <input type="email" name="email" class="form-control bg-transparent text-dark border-secondary shadow-none" placeholder="admin@serverroom.com" required>
+                    </div>
+                </div>
+                
+                <div class="mb-5">
+                    <label class="form-label text-secondary small">Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-transparent border-secondary text-secondary"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password" name="password" class="form-control bg-transparent text-dark border-secondary shadow-none" placeholder="••••••••" required>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 fw-semibold" style="background: linear-gradient(to right, #0284c7, #4f46e5); border: none;">
+                    Login to Dashboard <i class="fa-solid fa-arrow-right ms-2"></i>
+                </button>
+            </form>
+        </div>
+        
+    </div>
+</div>
+{% endblock %}
