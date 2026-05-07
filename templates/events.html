@@ -43,7 +43,6 @@
                     <th>Nilai Limit</th>
                     <th>Status</th>
                     <th>Durasi (s)</th>
-                    <th>User / Actor</th>
                 </tr>
             </thead>
             <tbody>
@@ -66,11 +65,6 @@
                         {% endif %}
                     </td>
                     <td>{{ event.durasi if event.durasi else '-' }}</td>
-                    <td>
-                        <span class="badge bg-secondary bg-opacity-25 border border-secondary text-secondary">
-                        <i class="fa-regular fa-user me-1"></i> {{ event.nama_user if event.nama_user else 'System' }}
-                        </span>
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
