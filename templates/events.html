@@ -37,34 +37,42 @@
         <table id="eventsTable" class="table custom-table align-middle">
             <thead>
                 <tr>
-                    <th>Waktu (Mulai - Selesai)</th>
+                    <th>Waktu</th>
                     <th>Event Type</th>
                     <th>Deskripsi</th>
-                    <th>Nilai Limit</th>
                     <th>Status</th>
-                    <th>Durasi (s)</th>
                 </tr>
             </thead>
             <tbody>
                 {% for event in events %}
                 <tr>
                     <td>
-                        <div class="small fw-semibold text-dark">{{ event.waktu_mulai.strftime('%Y-%m-%d %H:%M:%S') if event.waktu_mulai else '-' }}</div>
-                        <div class="small text-secondary">{{ event.waktu_selesai.strftime('%Y-%m-%d %H:%M:%S') if event.waktu_selesai else 'Ongoing' }}</div>
+                        <div class="small fw-semibold text-dark">{{ event.created_at.strftime('%d-%m-%Y %H:%M') }}</div>
                     </td>
                     <td><span class="fw-bold" style="color: #475569;">{{ event.event_type }}</span></td>
                     <td>{{ event.deskripsi }}</td>
-                    <td>{{ event.nilai }}</td>
                     <td>
-                        {% if event.status|lower == 'critical' %}
-                            <span class="badge bg-danger rounded-pill px-2">Critical</span>
-                        {% elif event.status|lower == 'warning' %}
-                            <span class="badge bg-warning text-dark rounded-pill px-2">Warning</span>
+                        {% if event.status in ['OVERHEAT', 'OVERLOAD', 'SHUTDOWN', 'OFF'] %}
+                            {# Kategori Kritis/Bahaya #}
+                            <span class="badge bg-danger rounded-pill px-3">{{ event.status }}</span>
+                            
+                        {% elif event.status in ['HIGH', 'COLD', 'WARNING'] %}
+                            {# Kategori Peringatan #}
+                            <span class="badge bg-warning text-dark rounded-pill px-3">{{ event.status }}</span>
+                            
+                        {% elif event.status == 'NORMAL' or event.status == 'ON' %}
+                            {# Kategori Aman #}
+                            <span class="badge bg-success rounded-pill px-3">NORMAL</span>
+                            
+                        {% elif event.status in ['OPEN', 'CLOSED', 'DOOR'] %}
+                            {# Kategori Informasi/Keamanan #}
+                            <span class="badge bg-info text-dark rounded-pill px-3">{{ event.status }}</span>
+                            
                         {% else %}
-                            <span class="badge bg-info rounded-pill px-2">Normal</span>
+                            {# Fallback jika ada status lain #}
+                            <span class="badge bg-secondary rounded-pill px-3">{{ event.status }}</span>
                         {% endif %}
                     </td>
-                    <td>{{ event.durasi if event.durasi else '-' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
