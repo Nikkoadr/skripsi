@@ -15,6 +15,7 @@ CREATE TABLE `event_logs` (
   `id` int NOT NULL AUTO_INCREMENT,
   `event_type` varchar(100) DEFAULT NULL,
   `deskripsi` text,
+  `status` varchar(20) DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB
