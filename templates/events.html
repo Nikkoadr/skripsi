@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 
 {% block head %}
-<!-- DataTables CSS -->
 <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+<link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet">
+
 <style>
     .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
         color: #475569 !important;
@@ -20,6 +21,25 @@
     .page-link:hover {
         background-color: #f8fafc;
         color: #0f172a;
+    }
+    /* Mengatur posisi tombol export agar rapi */
+    .dt-buttons {
+        float: left;
+        margin-bottom: 15px;
+    }
+    .dataTables_filter {
+        text-align: right;
+    }
+    .btn-export-excel {
+        background-color: #16a34a !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 5px 15px !important;
+        font-size: 14px !important;
+    }
+    .btn-export-excel:hover {
+        background-color: #15803d !important;
     }
 </style>
 {% endblock %}
@@ -53,23 +73,14 @@
                     <td>{{ event.deskripsi }}</td>
                     <td>
                         {% if event.status in ['OVERHEAT', 'OVERLOAD', 'SHUTDOWN', 'OFF'] %}
-                            {# Kategori Kritis/Bahaya #}
                             <span class="badge bg-danger rounded-pill px-3">{{ event.status }}</span>
-                            
                         {% elif event.status in ['HIGH', 'COLD', 'WARNING'] %}
-                            {# Kategori Peringatan #}
                             <span class="badge bg-warning text-dark rounded-pill px-3">{{ event.status }}</span>
-                            
                         {% elif event.status == 'NORMAL' or event.status == 'ON' %}
-                            {# Kategori Aman #}
                             <span class="badge bg-success rounded-pill px-3">NORMAL</span>
-                            
                         {% elif event.status in ['OPEN', 'CLOSED', 'DOOR'] %}
-                            {# Kategori Informasi/Keamanan #}
                             <span class="badge bg-info text-dark rounded-pill px-3">{{ event.status }}</span>
-                            
                         {% else %}
-                            {# Fallback jika ada status lain #}
                             <span class="badge bg-secondary rounded-pill px-3">{{ event.status }}</span>
                         {% endif %}
                     </td>
@@ -84,9 +95,32 @@
 {% block scripts %}
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+
 <script>
     $(document).ready(function() {
         $('#eventsTable').DataTable({
+            // dom: 'Bfrtip' digunakan untuk memunculkan Buttons (B)
+            dom: "<'row'<'col-sm-12 col-md-6'B><'col-sm-12 col-md-6'f>>" +
+                 "<'row'<'col-sm-12'tr>>" +
+                 "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: '<i class="bi bi-file-earmark-excel"></i> Export Excel',
+                    className: 'btn-export-excel',
+                    title: 'System Event Logs_' + new Date().toLocaleDateString(),
+                    exportOptions: {
+                        // Hanya ekspor kolom 0, 1, 2, dan 3
+                        columns: [0, 1, 2, 3]
+                    }
+                }
+            ],
             order: [[0, 'desc']],
             pageLength: 25,
             language: {
