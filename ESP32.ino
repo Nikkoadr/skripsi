@@ -23,7 +23,7 @@ const char* MQTT_PASS   = "1234567800";
 #define DHT_TYPE   DHT22
 #define LED_BUILTIN 2
 
-#define CALIBRATION_FACTOR 80.0
+#define CALIBRATION_FACTOR 71.22
 #define NOISE_THRESHOLD    0.45
 #define VOLTAGE_PLN        220.0
 #define ADC_VREF           3.3
@@ -46,6 +46,9 @@ bool statusPintu = false;
 unsigned long lastMqttSend = 0;
 unsigned long lastOLEDUpdate = 0;
 unsigned long lastReconnectAttempt = 0;
+unsigned long waktuPintuTerbuka = 0; 
+
+const unsigned long AMBANG_WAKTU = 300000;
 
 void setupWiFi() {
   Serial.print("\n[WIFI] Menghubungkan ke: "); Serial.println(WIFI_SSID);
@@ -106,6 +109,25 @@ void bacaSensorArus() {
 void handleDisplayAndSecurity() {
   statusPintu = (digitalRead(PIN_PINTU) == HIGH);
 
+  if (statusPintu) {
+    if (waktuPintuTerbuka == 0) {
+      waktuPintuTerbuka = millis();
+    }
+
+if (millis() - waktuPintuTerbuka > AMBANG_WAKTU) {
+
+  bool blinkState = (millis() / 500) % 2;
+
+  digitalWrite(LED_BUILTIN, blinkState);
+  digitalWrite(PIN_BUZZER, HIGH);
+
+}
+  } else {
+    waktuPintuTerbuka = 0;
+    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(PIN_BUZZER, LOW);
+  }
+
   if (millis() - lastOLEDUpdate < 1000) return;
 
   oled.clearDisplay();
@@ -118,7 +140,13 @@ void handleDisplayAndSecurity() {
   oled.printf("Lembab : %.0f %%\n", lembab);
   oled.printf("Arus   : %.2f A\n", arusRMS);
   oled.printf("Daya   : %.0f Watt\n", dayaWatt);
-  oled.printf("Pintu  : %s", statusPintu ? "TERBUKA" : "TERTUTUP");
+
+  if (waktuPintuTerbuka != 0 && (millis() - waktuPintuTerbuka > AMBANG_WAKTU)) {
+      oled.println(F("Pintu  : !ALARM!"));
+    } else {
+      oled.printf("Pintu  : %s", statusPintu ? "TERBUKA" : "TERTUTUP");
+    }
+
   oled.display();
   
   lastOLEDUpdate = millis();
