@@ -15,15 +15,14 @@ USE skripsi;
    TABLE: users
 ========================= */
 CREATE TABLE `users` (
-  `id` INT NOT NULL AUTO_INCREMENT,
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `nama` VARCHAR(100) NOT NULL,
   `email` VARCHAR(100) NOT NULL,
   `password` VARCHAR(255) NOT NULL,
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_users_email` (`email`)
-
 ) ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
@@ -32,22 +31,20 @@ COLLATE=utf8mb4_unicode_ci;
    TABLE: monitoring_logs
 ========================= */
 CREATE TABLE `monitoring_logs` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 
-  `suhu` DECIMAL(5,2) DEFAULT NULL,
-  `kelembapan` DECIMAL(5,2) DEFAULT NULL,
-  `arus_listrik` DECIMAL(6,2) DEFAULT NULL,
-  `daya_watt` DECIMAL(8,2) DEFAULT NULL,
+  `suhu` DECIMAL(4,1) DEFAULT NULL,
+  `kelembapan` DECIMAL(4,1) DEFAULT NULL,
+  `arus_listrik` DECIMAL(5,2) DEFAULT NULL,
+  `daya_watt` SMALLINT UNSIGNED DEFAULT NULL,
 
-  `status_pintu` ENUM('TERBUKA','TERTUTUP') DEFAULT NULL,
-  `power_status` ENUM('ON','OFF') DEFAULT NULL,
+  `status_pintu` TINYINT(1) DEFAULT NULL COMMENT '0=Tertutup, 1=Terbuka',
+  `power_status` TINYINT(1) DEFAULT NULL COMMENT '0=OFF, 1=ON',
 
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (`id`),
-
   INDEX `idx_monitoring_created_at` (`created_at`)
-
 ) ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
@@ -56,20 +53,18 @@ COLLATE=utf8mb4_unicode_ci;
    TABLE: event_logs
 ========================= */
 CREATE TABLE `event_logs` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 
-  `event_type` VARCHAR(100) DEFAULT NULL,
-  `deskripsi` TEXT,
+  `event_type` VARCHAR(50) DEFAULT NULL,
+  `deskripsi` VARCHAR(255) DEFAULT NULL,
 
-  `status` ENUM('AMAN','WARNING','BAHAYA') DEFAULT NULL,
+  `status` TINYINT(1) DEFAULT NULL COMMENT '0=Aman, 1=Warning, 2=Bahaya',
 
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (`id`),
-
   INDEX `idx_event_created_at` (`created_at`),
   INDEX `idx_event_type` (`event_type`)
-
 ) ENGINE=InnoDB
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
@@ -95,8 +90,7 @@ VALUES
 COMMIT;
 
 /* =====================================================
-   TRIGGER: LIMIT monitoring_logs MAX 1000 DATA
-   HAPUS 500 DATA PALING LAMA
+   TRIGGER: LIMIT monitoring_logs MAX 500 DATA
 ===================================================== */
 
 DELIMITER //
@@ -107,25 +101,22 @@ CREATE TRIGGER limit_monitoring_logs
 AFTER INSERT ON monitoring_logs
 FOR EACH ROW
 BEGIN
-
     IF (
         SELECT COUNT(*)
         FROM monitoring_logs
-    ) > 1000 THEN
+    ) > 500 THEN
 
         DELETE FROM monitoring_logs
         ORDER BY id ASC
-        LIMIT 500;
+        LIMIT 100;
 
     END IF;
-
 END//
 
 DELIMITER ;
 
 /* =====================================================
-   TRIGGER: LIMIT event_logs MAX 1000 DATA
-   HAPUS 500 DATA PALING LAMA
+   TRIGGER: LIMIT event_logs MAX 300 DATA
 ===================================================== */
 
 DELIMITER //
@@ -136,18 +127,16 @@ CREATE TRIGGER limit_event_logs
 AFTER INSERT ON event_logs
 FOR EACH ROW
 BEGIN
-
     IF (
         SELECT COUNT(*)
         FROM event_logs
-    ) > 1000 THEN
+    ) > 300 THEN
 
         DELETE FROM event_logs
         ORDER BY id ASC
-        LIMIT 500;
+        LIMIT 100;
 
     END IF;
-
 END//
 
 DELIMITER ;

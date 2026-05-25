@@ -1,86 +1,173 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block head %}
 
-{% block head %}
 <!-- DataTables CSS -->
-<link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-<style>
-    .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
-        color: #475569 !important;
-        margin-bottom: 1rem;
-    }
-    .page-item.active .page-link {
-        background-color: #0284c7;
-        border-color: #0284c7;
-    }
-    .page-link {
-        background-color: #ffffff;
-        border-color: #e2e8f0;
-        color: #64748b;
-    }
-    .page-link:hover {
-        background-color: #f8fafc;
-        color: #0f172a;
-    }
-</style>
-{% endblock %}
+<link
+  href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css"
+  rel="stylesheet"
+/>
 
-{% block content %}
+<style>
+  .dataTables_wrapper .dataTables_length,
+  .dataTables_wrapper .dataTables_filter,
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_processing,
+  .dataTables_wrapper .dataTables_paginate {
+    color: #475569 !important;
+    margin-bottom: 1rem;
+  }
+
+  .page-item.active .page-link {
+    background-color: #0284c7;
+    border-color: #0284c7;
+  }
+
+  .page-link {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+    color: #64748b;
+  }
+
+  .page-link:hover {
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  .badge-status {
+    min-width: 90px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+</style>
+
+{% endblock %} {% block content %}
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h3 class="fw-bold mb-0">Monitoring Logs</h3>
-        <p class="text-secondary mb-0">Historical Sensor Data</p>
-    </div>
+  <div>
+    <h3 class="fw-bold mb-0">Monitoring Logs</h3>
+
+    <p class="text-secondary mb-0">Historical Sensor Data</p>
+  </div>
 </div>
 
 <div class="glass-card p-4">
-    <div class="table-responsive">
-        <table id="logsTable" class="table custom-table align-middle">
-            <thead>
-                <tr>
-                    <th>Waktu (Created At)</th>
-                    <th>Suhu (°C)</th>
-                    <th>Kelembapan (%)</th>
-                    <th>Arus (A)</th>
-                    <th>Daya (W)</th>
-                    <th>Status Pintu</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td>{{ log.created_at.strftime('%d-%m-%Y %H:%M') }}</td>
-                    <td>{{"%.1f"|format(log.suhu)}} °C</td>
-                    <td>{{ "%.1f"|format(log.kelembapan) }} %</td>
-                    <td>{{ "%.2f"|format(log.arus_listrik) }} A</td>
-                    <td>{{ "%.0f"|format(log.daya_watt) }} W</td>
-                    <td>
-                        {% if log.status_pintu == 'terbuka' %}
-                            <span class="badge bg-danger rounded-pill px-2">Terbuka</span>
-                        {% else %}
-                            <span class="badge bg-success rounded-pill px-2">Tertutup</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endblock %}
+  <div class="table-responsive">
+    <table id="logsTable" class="table custom-table align-middle">
+      <thead>
+        <tr>
+          <th>Time</th>
 
-{% block scripts %}
+          <th>Temperature</th>
+
+          <th>Humidity</th>
+
+          <th>Current</th>
+
+          <th>Power</th>
+
+          <th>Door Status</th>
+
+          <th>Power Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for log in logs %}
+
+        <tr>
+          <!-- Time -->
+          <td style="min-width: 150px">
+            <span class="fw-semibold text-dark">
+              {{ log.created_at.strftime('%d-%m-%Y %H:%M') }}
+            </span>
+          </td>
+
+          <!-- Temperature -->
+          <td>{{ "%.1f"|format(log.suhu) }} °C</td>
+
+          <!-- Humidity -->
+          <td>{{ "%.1f"|format(log.kelembapan) }} %</td>
+
+          <!-- Current -->
+          <td>{{ "%.2f"|format(log.arus_listrik) }} A</td>
+
+          <!-- Power -->
+          <td>{{ "%.0f"|format(log.daya_watt) }} W</td>
+
+          <!-- Door Status -->
+          <td>
+            {% if log.status_pintu == 1 %}
+
+            <span class="badge bg-danger rounded-pill px-3 py-2 badge-status">
+              OPEN
+            </span>
+
+            {% else %}
+
+            <span class="badge bg-success rounded-pill px-3 py-2 badge-status">
+              CLOSED
+            </span>
+
+            {% endif %}
+          </td>
+
+          <!-- Power Status -->
+          <td>
+            {% if log.power_status == 0 %}
+
+            <span class="badge bg-danger rounded-pill px-3 py-2 badge-status">
+              OFF
+            </span>
+
+            {% else %}
+
+            <span class="badge bg-success rounded-pill px-3 py-2 badge-status">
+              ON
+            </span>
+
+            {% endif %}
+          </td>
+        </tr>
+
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
 <script>
-    $(document).ready(function() {
-        $('#logsTable').DataTable({
-            order: [[0, 'desc']],
-            pageLength: 25,
-            language: {
-                search: "_INPUT_",
-                searchPlaceholder: "Search records..."
-            }
-        });
+  $(document).ready(function () {
+    $("#logsTable").DataTable({
+      order: [[0, "desc"]],
+
+      pageLength: 25,
+
+      responsive: true,
+
+      language: {
+        search: "_INPUT_",
+
+        searchPlaceholder: "Search records...",
+
+        lengthMenu: "Show _MENU_ entries",
+
+        info: "Showing _START_ to _END_ of _TOTAL_ entries",
+
+        paginate: {
+          previous: "Previous",
+          next: "Next",
+        },
+
+        zeroRecords: "No matching records found",
+      },
     });
+  });
 </script>
+
 {% endblock %}

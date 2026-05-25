@@ -1,133 +1,224 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block head %}
 
-{% block head %}
-<link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-<link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet">
+<link
+  href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css"
+  rel="stylesheet"
+/>
+
+<link
+  href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css"
+  rel="stylesheet"
+/>
 
 <style>
-    .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
-        color: #475569 !important;
-        margin-bottom: 1rem;
-    }
-    .page-item.active .page-link {
-        background-color: #0284c7;
-        border-color: #0284c7;
-    }
-    .page-link {
-        background-color: #ffffff;
-        border-color: #e2e8f0;
-        color: #64748b;
-    }
-    .page-link:hover {
-        background-color: #f8fafc;
-        color: #0f172a;
-    }
-    /* Mengatur posisi tombol export agar rapi */
-    .dt-buttons {
-        float: left;
-        margin-bottom: 15px;
-    }
-    .dataTables_filter {
-        text-align: right;
-    }
-    .btn-export-excel {
-        background-color: #16a34a !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 5px 15px !important;
-        font-size: 14px !important;
-    }
-    .btn-export-excel:hover {
-        background-color: #15803d !important;
-    }
-</style>
-{% endblock %}
+  .dataTables_wrapper .dataTables_length,
+  .dataTables_wrapper .dataTables_filter,
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_processing,
+  .dataTables_wrapper .dataTables_paginate {
+    color: #475569 !important;
+    margin-bottom: 1rem;
+  }
 
-{% block content %}
+  .page-item.active .page-link {
+    background-color: #0284c7;
+    border-color: #0284c7;
+  }
+
+  .page-link {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+    color: #64748b;
+  }
+
+  .page-link:hover {
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  .dt-buttons {
+    float: left;
+    margin-bottom: 15px;
+  }
+
+  .dataTables_filter {
+    text-align: right;
+  }
+
+  .btn-export-excel {
+    background-color: #16a34a !important;
+    color: white !important;
+
+    border: none !important;
+
+    border-radius: 10px !important;
+
+    padding: 6px 16px !important;
+
+    font-size: 14px !important;
+
+    font-weight: 600 !important;
+  }
+
+  .btn-export-excel:hover {
+    background-color: #15803d !important;
+  }
+
+  .badge-status {
+    min-width: 90px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+</style>
+
+{% endblock %} {% block content %}
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h3 class="fw-bold mb-0">Event Logs</h3>
-        <p class="text-secondary mb-0">System Events & Alerts</p>
-    </div>
+  <div>
+    <h3 class="fw-bold mb-0">Event Logs</h3>
+
+    <p class="text-secondary mb-0">System Events & Alerts</p>
+  </div>
 </div>
 
 <div class="glass-card p-4">
-    <div class="table-responsive">
-        <table id="eventsTable" class="table custom-table align-middle">
-            <thead>
-                <tr>
-                    <th>Waktu</th>
-                    <th>Event Type</th>
-                    <th>Deskripsi</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for event in events %}
-                <tr>
-                    <td>
-                        <div class="small fw-semibold text-dark">{{ event.created_at.strftime('%d-%m-%Y %H:%M') }}</div>
-                    </td>
-                    <td><span class="fw-bold" style="color: #475569;">{{ event.event_type }}</span></td>
-                    <td>{{ event.deskripsi }}</td>
-                    <td>
-                        {% if event.status in ['OVERHEAT', 'OVERLOAD', 'SHUTDOWN', 'OFF'] %}
-                            <span class="badge bg-danger rounded-pill px-3">{{ event.status }}</span>
-                        {% elif event.status in ['HIGH', 'COLD', 'WARNING'] %}
-                            <span class="badge bg-warning text-dark rounded-pill px-3">{{ event.status }}</span>
-                        {% elif event.status == 'NORMAL' or event.status == 'ON' %}
-                            <span class="badge bg-success rounded-pill px-3">NORMAL</span>
-                        {% elif event.status in ['OPEN', 'CLOSED', 'DOOR'] %}
-                            <span class="badge bg-info text-dark rounded-pill px-3">{{ event.status }}</span>
-                        {% else %}
-                            <span class="badge bg-secondary rounded-pill px-3">{{ event.status }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endblock %}
+  <div class="table-responsive">
+    <table id="eventsTable" class="table custom-table align-middle">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Event Type</th>
+          <th>Description</th>
+          <th>Status</th>
+        </tr>
+      </thead>
 
-{% block scripts %}
+      <tbody>
+        {% for event in events %}
+
+        <tr>
+          <!-- Time -->
+          <td style="min-width: 150px">
+            <div class="small fw-semibold text-dark">
+              {{ event.created_at.strftime('%d-%m-%Y %H:%M') }}
+            </div>
+          </td>
+
+          <!-- Event Type -->
+          <td style="min-width: 140px">
+            <span class="fw-bold" style="color: #475569">
+              {{ event.event_type }}
+            </span>
+          </td>
+
+          <!-- Description -->
+          <td>{{ event.deskripsi }}</td>
+
+          <!-- Status -->
+          <td style="min-width: 120px">
+            {% if event.status == 2 %}
+
+            <span class="badge bg-danger rounded-pill px-3 py-2 badge-status">
+              BAHAYA
+            </span>
+
+            {% elif event.status == 1 %}
+
+            <span
+              class="badge bg-warning text-dark rounded-pill px-3 py-2 badge-status"
+            >
+              WARNING
+            </span>
+
+            {% elif event.status == 0 %}
+
+            <span class="badge bg-success rounded-pill px-3 py-2 badge-status">
+              AMAN
+            </span>
+
+            {% else %}
+
+            <span
+              class="badge bg-secondary rounded-pill px-3 py-2 badge-status"
+            >
+              UNKNOWN
+            </span>
+
+            {% endif %}
+          </td>
+        </tr>
+
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
 
 <script>
-    $(document).ready(function() {
-        $('#eventsTable').DataTable({
-            // dom: 'Bfrtip' digunakan untuk memunculkan Buttons (B)
-            dom: "<'row'<'col-sm-12 col-md-6'B><'col-sm-12 col-md-6'f>>" +
-                 "<'row'<'col-sm-12'tr>>" +
-                 "<'row'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
-            buttons: [
-                {
-                    extend: 'excelHtml5',
-                    text: '<i class="bi bi-file-earmark-excel"></i> Export Excel',
-                    className: 'btn-export-excel',
-                    title: 'System Event Logs_' + new Date().toLocaleDateString(),
-                    exportOptions: {
-                        // Hanya ekspor kolom 0, 1, 2, dan 3
-                        columns: [0, 1, 2, 3]
-                    }
-                }
-            ],
-            order: [[0, 'desc']],
-            pageLength: 25,
-            language: {
-                search: "_INPUT_",
-                searchPlaceholder: "Search events..."
-            }
-        });
+  $(document).ready(function () {
+    $("#eventsTable").DataTable({
+      dom:
+        "<'row mb-3'<'col-sm-12 col-md-6'B><'col-sm-12 col-md-6'f>>" +
+        "<'row'<'col-sm-12'tr>>" +
+        "<'row mt-3'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+
+      buttons: [
+        {
+          extend: "excelHtml5",
+
+          text: "Export Excel",
+
+          className: "btn-export-excel",
+
+          title: "System_Event_Logs_" + new Date().toLocaleDateString(),
+
+          exportOptions: {
+            columns: [0, 1, 2, 3],
+          },
+        },
+      ],
+
+      order: [[0, "desc"]],
+
+      pageLength: 25,
+
+      responsive: true,
+
+      language: {
+        search: "_INPUT_",
+
+        searchPlaceholder: "Search events...",
+
+        lengthMenu: "Show _MENU_ entries",
+
+        info: "Showing _START_ to _END_ of _TOTAL_ entries",
+
+        paginate: {
+          previous: "Previous",
+          next: "Next",
+        },
+
+        zeroRecords: "No matching events found",
+      },
     });
+  });
 </script>
+
 {% endblock %}
