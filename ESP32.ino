@@ -17,7 +17,7 @@ const char* MQTT_PASS   = "1234567800";
 #define PIN_SCT    34
 #define PIN_DHT    23
 #define PIN_PINTU  18
-#define PIN_BUZZER 19
+#define PIN_BUZZER 14
 #define PIN_SDA    21
 #define PIN_SCL    22
 #define DHT_TYPE   DHT22
