@@ -6,107 +6,193 @@
 #include <ArduinoJson.h>
 #include "DHT.h"
 
-const char* WIFI_SSID   = "Toucan";
-const char* WIFI_PASS   = "Rahasiadong99*";
+// =========================================================
+// WIFI CONFIG
+// =========================================================
+const char* WIFI_SSID = "Toucan";
+const char* WIFI_PASS = "Rahasiadong99*";
+
+// =========================================================
+// MQTT CONFIG
+// =========================================================
 const char* MQTT_BROKER = "192.168.1.16";
 const int   MQTT_PORT   = 1883;
 const char* MQTT_TOPIC  = "220511203/monitoring/server/data";
 const char* MQTT_USER   = "nikkoadr";
 const char* MQTT_PASS   = "1234567800";
 
-#define PIN_SCT    34
-#define PIN_DHT    23
-#define PIN_PINTU  18
-#define PIN_BUZZER 14
-#define PIN_SDA    21
-#define PIN_SCL    22
-#define DHT_TYPE   DHT22
-#define LED_BUILTIN 2
+// =========================================================
+// PIN CONFIG
+// =========================================================
+#define PIN_SCT       34
+#define PIN_DHT       23
+#define PIN_PINTU     18
+#define PIN_BUZZER    14
+#define PIN_SDA       21
+#define PIN_SCL       22
+#define LED_BUILTIN   2
 
-#define CALIBRATION_FACTOR 71.22
-#define NOISE_THRESHOLD    0.45
-#define VOLTAGE_PLN        220.0
-#define ADC_VREF           3.3
-#define ADC_RES            4095.0
-#define CURRENT_SAMPLES    500
-#define SAMPLING_PERIOD    150
+// =========================================================
+// SENSOR CONFIG
+// =========================================================
+#define DHT_TYPE             DHT22
+#define CALIBRATION_FACTOR   71.22
+#define NOISE_THRESHOLD      0.45
+#define VOLTAGE_PLN          220.0
+#define ADC_VREF             3.3
+#define ADC_RES              4095.0
+#define CURRENT_SAMPLES      500
+#define SAMPLING_PERIOD      150
 
-#define SCREEN_WIDTH  128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET    -1
-#define SCREEN_ADDRESS 0x3C
+// =========================================================
+// OLED CONFIG
+// =========================================================
+#define SCREEN_WIDTH    128
+#define SCREEN_HEIGHT   64
+#define OLED_RESET      -1
+#define SCREEN_ADDRESS  0x3C
 
+// =========================================================
+// TIMER CONFIG
+// =========================================================
+const unsigned long INTERVAL_MQTT_SEND   = 2000;
+const unsigned long INTERVAL_OLED_UPDATE = 1000;
+const unsigned long INTERVAL_RECONNECT   = 5000;
+const unsigned long AMBANG_WAKTU_PINTU   = 300000; // 5 menit
+
+// =========================================================
+// OBJECT INIT
+// =========================================================
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 DHT dht(PIN_DHT, DHT_TYPE);
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
-float suhu, lembab, arusRMS, dayaWatt;
+// =========================================================
+// GLOBAL VARIABLE
+// =========================================================
+float suhu     = 0.0;
+float lembab   = 0.0;
+float arusRMS  = 0.0;
+float dayaWatt = 0.0;
+
 bool statusPintu = false;
-unsigned long lastMqttSend = 0;
-unsigned long lastOLEDUpdate = 0;
+bool alarmPintu  = false;
+
+unsigned long lastMqttSend         = 0;
+unsigned long lastOLEDUpdate       = 0;
 unsigned long lastReconnectAttempt = 0;
-unsigned long waktuPintuTerbuka = 0; 
+unsigned long waktuPintuTerbuka    = 0;
 
-const unsigned long AMBANG_WAKTU = 300000;
-
+// =========================================================
+// SETUP WIFI
+// =========================================================
 void setupWiFi() {
-  Serial.print("\n[WIFI] Menghubungkan ke: "); Serial.println(WIFI_SSID);
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  Serial.print("\n[WIFI] Menghubungkan ke: ");
+  Serial.println(WIFI_SSID);
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   int timeout = 0;
+
   while (WiFi.status() != WL_CONNECTED && timeout < 20) {
-    delay(500); Serial.print("."); timeout++;
+    delay(500);
+    Serial.print(".");
+    timeout++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WIFI] Terhubung! IP: " + WiFi.localIP().toString());
+    Serial.println("\n[WIFI] Terhubung!");
+    Serial.print("[WIFI] IP Address: ");
+    Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n[WIFI] Gagal Terhubung.");
+    Serial.println("\n[WIFI] Gagal terhubung.");
   }
 }
 
+// =========================================================
+// RECONNECT MQTT
+// =========================================================
 bool reconnectMQTT() {
-  if (!mqtt.connected()) {
-    Serial.print("[MQTT] Reconnecting...");
-    if (mqtt.connect("ESP32_Server_Monitor", MQTT_USER, MQTT_PASS)) {
-      Serial.println("Sukses!");
-      return true;
-    } else {
-      Serial.print("Gagal, rc="); Serial.println(mqtt.state());
-      return false;
-    }
+  if (mqtt.connected()) return true;
+
+  Serial.print("[MQTT] Reconnecting... ");
+
+  String clientId = "ESP32_Server_Monitor_";
+  clientId += String((uint32_t)ESP.getEfuseMac(), HEX);
+
+  if (mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+    Serial.println("Sukses!");
+    return true;
   }
-  return true;
+
+  Serial.print("Gagal, rc=");
+  Serial.println(mqtt.state());
+
+  return false;
 }
 
-void bacaSensorArus() {
-  float sumV = 0;
-  uint32_t n = 0;
-  float midPoint = 0;
+// =========================================================
+// BACA SENSOR DHT22
+// =========================================================
+void bacaSensorDHT() {
+  float suhuBaca   = dht.readTemperature();
+  float lembabBaca = dht.readHumidity();
 
-  for(int i = 0; i < CURRENT_SAMPLES; i++) {
-    midPoint += analogRead(PIN_SCT);
+  if (!isnan(suhuBaca)) {
+    suhu = suhuBaca;
   }
-  midPoint /= (float)CURRENT_SAMPLES;
 
-  uint32_t start_time = millis();
-  while((millis() - start_time) < SAMPLING_PERIOD) {
+  if (!isnan(lembabBaca)) {
+    lembab = lembabBaca;
+  }
+}
+
+// =========================================================
+// BACA SENSOR ARUS SCT-013
+// =========================================================
+void bacaSensorArus() {
+  float midpoint = 0.0;
+  float sumV     = 0.0;
+  uint32_t n     = 0;
+
+  for (int i = 0; i < CURRENT_SAMPLES; i++) {
+    midpoint += analogRead(PIN_SCT);
+  }
+
+  midpoint /= (float) CURRENT_SAMPLES;
+
+  uint32_t startTime = millis();
+
+  while ((millis() - startTime) < SAMPLING_PERIOD) {
     int raw = analogRead(PIN_SCT);
-    float voltage = (raw - midPoint) * ADC_VREF / ADC_RES;
-    sumV += (voltage * voltage);
+
+    float voltage = (raw - midpoint) * ADC_VREF / ADC_RES;
+
+    sumV += voltage * voltage;
     n++;
   }
 
-  float vRMS = sqrt(sumV / n);
+  if (n == 0) {
+    arusRMS  = 0.0;
+    dayaWatt = 0.0;
+    return;
+  }
+
+  float vRMS  = sqrt(sumV / n);
   float iCalc = vRMS * CALIBRATION_FACTOR;
 
-  arusRMS = (iCalc < NOISE_THRESHOLD) ? 0 : iCalc;
+  arusRMS = (iCalc < NOISE_THRESHOLD) ? 0.0 : iCalc;
   dayaWatt = arusRMS * VOLTAGE_PLN;
 }
 
-void handleDisplayAndSecurity() {
+// =========================================================
+// BACA STATUS PINTU DAN ALARM
+// =========================================================
+void handleSecurity() {
   statusPintu = (digitalRead(PIN_PINTU) == HIGH);
 
   if (statusPintu) {
@@ -114,106 +200,143 @@ void handleDisplayAndSecurity() {
       waktuPintuTerbuka = millis();
     }
 
-if (millis() - waktuPintuTerbuka > AMBANG_WAKTU) {
-
-  bool blinkState = (millis() / 500) % 2;
-
-  digitalWrite(LED_BUILTIN, blinkState);
-  digitalWrite(PIN_BUZZER, HIGH);
-
-}
+    alarmPintu = (millis() - waktuPintuTerbuka > AMBANG_WAKTU_PINTU);
   } else {
     waktuPintuTerbuka = 0;
+    alarmPintu = false;
+  }
+
+  if (alarmPintu) {
+    bool blinkState = (millis() / 500) % 2;
+
+    digitalWrite(LED_BUILTIN, blinkState);
+    digitalWrite(PIN_BUZZER, blinkState);
+  } else {
     digitalWrite(LED_BUILTIN, LOW);
     digitalWrite(PIN_BUZZER, LOW);
   }
+}
 
-  if (millis() - lastOLEDUpdate < 1000) return;
+// =========================================================
+// UPDATE OLED
+// =========================================================
+void updateOLED() {
+  if (millis() - lastOLEDUpdate < INTERVAL_OLED_UPDATE) return;
 
   oled.clearDisplay();
   oled.setTextSize(1);
   oled.setTextColor(WHITE);
+
   oled.setCursor(0, 0);
-  oled.println(F(" MONITOR R. Server "));
+  oled.println(F(" MONITOR R. SERVER "));
   oled.println(F("---------------------"));
+
   oled.printf("Suhu   : %.1f C\n", suhu);
   oled.printf("Lembab : %.0f %%\n", lembab);
   oled.printf("Arus   : %.2f A\n", arusRMS);
   oled.printf("Daya   : %.0f Watt\n", dayaWatt);
 
-  if (waktuPintuTerbuka != 0 && (millis() - waktuPintuTerbuka > AMBANG_WAKTU)) {
-      oled.println(F("Pintu  : !ALARM!"));
-    } else {
-      oled.printf("Pintu  : %s", statusPintu ? "TERBUKA" : "TERTUTUP");
-    }
+  if (alarmPintu) {
+    oled.println(F("Pintu  : !ALARM!"));
+  } else {
+    oled.printf("Pintu  : %s\n", statusPintu ? "TERBUKA" : "TERTUTUP");
+  }
 
   oled.display();
-  
+
   lastOLEDUpdate = millis();
 }
 
+// =========================================================
+// PUBLISH MQTT
+// =========================================================
+void publishMQTT() {
+  if (millis() - lastMqttSend < INTERVAL_MQTT_SEND) return;
+
+  bacaSensorDHT();
+
+  if (mqtt.connected()) {
+    StaticJsonDocument<256> doc;
+
+    doc["suhu"]   = suhu;
+    doc["lembab"] = lembab;
+    doc["amper"]  = arusRMS;
+    doc["watt"]   = dayaWatt;
+    doc["pintu"]  = statusPintu ? "terbuka" : "tertutup";
+    doc["alarm_pintu"] = alarmPintu ? "aktif" : "normal";
+
+    char buffer[256];
+    serializeJson(doc, buffer);
+
+    mqtt.publish(MQTT_TOPIC, buffer);
+
+    Serial.print("[MQTT] Sent -> ");
+    Serial.println(buffer);
+  } else {
+    Serial.println("[MQTT] Tidak terkoneksi, data belum dikirim.");
+  }
+
+  lastMqttSend = millis();
+}
+
+// =========================================================
+// SETUP
+// =========================================================
 void setup() {
   Serial.begin(115200);
+
   Wire.begin(PIN_SDA, PIN_SCL);
-  
+
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
-  
+
   pinMode(PIN_PINTU, INPUT_PULLUP);
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  
+
   digitalWrite(PIN_BUZZER, LOW);
   digitalWrite(LED_BUILTIN, LOW);
-  
-  if(!oled.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("OLED Gagal!"));
+
+  if (!oled.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("[OLED] Gagal inisialisasi!"));
   } else {
     oled.clearDisplay();
+    oled.setTextSize(1);
+    oled.setTextColor(WHITE);
     oled.setCursor(0, 10);
-    oled.println(F("   SYSTEM READY   "));
+    oled.println(F("  SYSTEM READY"));
+    oled.println(F("  MONITOR AKTIF"));
     oled.display();
   }
 
   dht.begin();
+
   setupWiFi();
+
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
-  
-  Serial.println(F("[SYSTEM] Node Monitoring Aktif!"));
+
+  Serial.println(F("[SYSTEM] Node Monitoring Ruang Server Aktif!"));
 }
 
+// =========================================================
+// LOOP
+// =========================================================
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) setupWiFi();
-  
   unsigned long now = millis();
-  if (!mqtt.connected() && (now - lastReconnectAttempt > 5000)) {
+
+  if (WiFi.status() != WL_CONNECTED) {
+    setupWiFi();
+  }
+
+  if (!mqtt.connected() && (now - lastReconnectAttempt > INTERVAL_RECONNECT)) {
     reconnectMQTT();
     lastReconnectAttempt = now;
   }
+
   mqtt.loop();
 
   bacaSensorArus();
-
-  if (now - lastMqttSend >= 2000) {
-    suhu = dht.readTemperature();
-    lembab = dht.readHumidity();
-
-    if (mqtt.connected()) {
-      StaticJsonDocument<256> doc;
-      doc["suhu"] = isnan(suhu) ? 0 : suhu;
-      doc["lembab"] = isnan(lembab) ? 0 : lembab;
-      doc["watt"] = dayaWatt;
-      doc["amper"] = arusRMS;
-      doc["pintu"] = statusPintu ? "terbuka" : "tertutup";
-
-      char buffer[256];
-      serializeJson(doc, buffer);
-      mqtt.publish(MQTT_TOPIC, buffer);
-      
-      Serial.printf("[MQTT] Sent -> A:%.2f, W:%.0f\n", arusRMS, dayaWatt);
-    }
-    lastMqttSend = now;
-  }
-
-  handleDisplayAndSecurity();
+  handleSecurity();
+  updateOLED();
+  publishMQTT();
 }

@@ -1,6 +1,5 @@
-{% extends "base.html" %} {% block head %}
-
-<!-- DataTables CSS -->
+{% extends "base.html" %} {% block title %}Monitoring Logs{% endblock %} {%
+block head %}
 <link
   href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css"
   rel="stylesheet"
@@ -39,14 +38,11 @@
     letter-spacing: 0.3px;
   }
 </style>
-
 {% endblock %} {% block content %}
-
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h3 class="fw-bold mb-0">Monitoring Logs</h3>
-
-    <p class="text-secondary mb-0">Historical Sensor Data</p>
+    <p class="text-secondary mb-0">Riwayat data sensor ruang server</p>
   </div>
 </div>
 
@@ -55,119 +51,108 @@
     <table id="logsTable" class="table custom-table align-middle">
       <thead>
         <tr>
-          <th>Time</th>
-
-          <th>Temperature</th>
-
-          <th>Humidity</th>
-
-          <th>Current</th>
-
-          <th>Power</th>
-
-          <th>Door Status</th>
-
-          <th>Power Status</th>
+          <th>Waktu</th>
+          <th>Suhu</th>
+          <th>Kelembapan</th>
+          <th>Arus</th>
+          <th>Daya</th>
+          <th>Status Pintu</th>
+          <th>Status Listrik</th>
         </tr>
       </thead>
 
       <tbody>
         {% for log in logs %}
-
         <tr>
-          <!-- Time -->
           <td style="min-width: 150px">
             <span class="fw-semibold text-dark">
-              {{ log.created_at.strftime('%d-%m-%Y %H:%M') }}
+              {{ log.created_at.strftime('%d-%m-%Y %H:%M') if log.created_at
+              else '-' }}
             </span>
           </td>
 
-          <!-- Temperature -->
-          <td>{{ "%.1f"|format(log.suhu) }} °C</td>
+          <td>
+            {{ "%.1f"|format(log.suhu) if log.suhu is not none else '-' }} °C
+          </td>
 
-          <!-- Humidity -->
-          <td>{{ "%.1f"|format(log.kelembapan) }} %</td>
+          <td>
+            {{ "%.1f"|format(log.kelembapan) if log.kelembapan is not none else
+            '-' }} %
+          </td>
 
-          <!-- Current -->
-          <td>{{ "%.2f"|format(log.arus_listrik) }} A</td>
+          <td>
+            {{ "%.2f"|format(log.arus_listrik) if log.arus_listrik is not none
+            else '-' }} A
+          </td>
 
-          <!-- Power -->
-          <td>{{ "%.0f"|format(log.daya_watt) }} W</td>
+          <td>
+            {{ "%.0f"|format(log.daya_watt) if log.daya_watt is not none else
+            '-' }} W
+          </td>
 
-          <!-- Door Status -->
           <td>
             {% if log.status_pintu == 1 %}
-
             <span class="badge bg-danger rounded-pill px-3 py-2 badge-status">
-              OPEN
+              TERBUKA
             </span>
-
-            {% else %}
-
+            {% elif log.status_pintu == 0 %}
             <span class="badge bg-success rounded-pill px-3 py-2 badge-status">
-              CLOSED
+              TERTUTUP
             </span>
-
+            {% else %}
+            <span
+              class="badge bg-secondary rounded-pill px-3 py-2 badge-status"
+            >
+              UNKNOWN
+            </span>
             {% endif %}
           </td>
 
-          <!-- Power Status -->
           <td>
             {% if log.power_status == 0 %}
-
             <span class="badge bg-danger rounded-pill px-3 py-2 badge-status">
               OFF
             </span>
-
-            {% else %}
-
+            {% elif log.power_status == 1 %}
             <span class="badge bg-success rounded-pill px-3 py-2 badge-status">
               ON
             </span>
-
+            {% else %}
+            <span
+              class="badge bg-secondary rounded-pill px-3 py-2 badge-status"
+            >
+              UNKNOWN
+            </span>
             {% endif %}
           </td>
         </tr>
-
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
-
 {% endblock %} {% block scripts %}
-
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
   $(document).ready(function () {
     $("#logsTable").DataTable({
       order: [[0, "desc"]],
-
       pageLength: 25,
-
-      responsive: true,
 
       language: {
         search: "_INPUT_",
-
-        searchPlaceholder: "Search records...",
-
-        lengthMenu: "Show _MENU_ entries",
-
-        info: "Showing _START_ to _END_ of _TOTAL_ entries",
-
+        searchPlaceholder: "Cari data...",
+        lengthMenu: "Tampilkan _MENU_ data",
+        info: "Menampilkan _START_ sampai _END_ dari _TOTAL_ data",
         paginate: {
-          previous: "Previous",
-          next: "Next",
+          previous: "Sebelumnya",
+          next: "Berikutnya",
         },
-
-        zeroRecords: "No matching records found",
+        zeroRecords: "Data monitoring tidak ditemukan",
       },
     });
   });
 </script>
-
 {% endblock %}

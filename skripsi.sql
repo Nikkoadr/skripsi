@@ -2,18 +2,12 @@ SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
 
-/* =========================
-   DATABASE
-========================= */
 CREATE DATABASE IF NOT EXISTS skripsi
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
 USE skripsi;
 
-/* =========================
-   TABLE: users
-========================= */
 CREATE TABLE `users` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `nama` VARCHAR(100) NOT NULL,
@@ -27,16 +21,13 @@ CREATE TABLE `users` (
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
-/* =========================
-   TABLE: monitoring_logs
-========================= */
 CREATE TABLE `monitoring_logs` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 
   `suhu` DECIMAL(4,1) DEFAULT NULL,
   `kelembapan` DECIMAL(4,1) DEFAULT NULL,
   `arus_listrik` DECIMAL(5,2) DEFAULT NULL,
-  `daya_watt` SMALLINT UNSIGNED DEFAULT NULL,
+  `daya_watt` DECIMAL(7,1) DEFAULT NULL,
 
   `status_pintu` TINYINT(1) DEFAULT NULL COMMENT '0=Tertutup, 1=Terbuka',
   `power_status` TINYINT(1) DEFAULT NULL COMMENT '0=OFF, 1=ON',
@@ -49,9 +40,6 @@ CREATE TABLE `monitoring_logs` (
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
-/* =========================
-   TABLE: event_logs
-========================= */
 CREATE TABLE `event_logs` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 
@@ -69,9 +57,6 @@ CREATE TABLE `event_logs` (
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
-/* =========================
-   DATA USER DEFAULT
-========================= */
 INSERT INTO `users`
 (
   `nama`,
@@ -88,55 +73,3 @@ VALUES
 );
 
 COMMIT;
-
-/* =====================================================
-   TRIGGER: LIMIT monitoring_logs MAX 500 DATA
-===================================================== */
-
-DELIMITER //
-
-DROP TRIGGER IF EXISTS limit_monitoring_logs//
-
-CREATE TRIGGER limit_monitoring_logs
-AFTER INSERT ON monitoring_logs
-FOR EACH ROW
-BEGIN
-    IF (
-        SELECT COUNT(*)
-        FROM monitoring_logs
-    ) > 500 THEN
-
-        DELETE FROM monitoring_logs
-        ORDER BY id ASC
-        LIMIT 100;
-
-    END IF;
-END//
-
-DELIMITER ;
-
-/* =====================================================
-   TRIGGER: LIMIT event_logs MAX 300 DATA
-===================================================== */
-
-DELIMITER //
-
-DROP TRIGGER IF EXISTS limit_event_logs//
-
-CREATE TRIGGER limit_event_logs
-AFTER INSERT ON event_logs
-FOR EACH ROW
-BEGIN
-    IF (
-        SELECT COUNT(*)
-        FROM event_logs
-    ) > 300 THEN
-
-        DELETE FROM event_logs
-        ORDER BY id ASC
-        LIMIT 100;
-
-    END IF;
-END//
-
-DELIMITER ;

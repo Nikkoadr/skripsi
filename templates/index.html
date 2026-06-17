@@ -1,11 +1,11 @@
-{% extends "base.html" %} {% block head %}
+{% extends "base.html" %} {% block title %}Dashboard{% endblock %} {% block head
+%}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 {% endblock %} {% block content %}
-
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h3 class="fw-bold mb-0">Dashboard</h3>
-    <p class="text-secondary mb-0">Real-time Server Room Monitoring</p>
+    <p class="text-secondary mb-0">Monitoring ruang server secara real-time</p>
   </div>
 
   <div class="text-end">
@@ -14,17 +14,16 @@
     </span>
 
     <p class="text-secondary small mt-1 mb-0" id="last-update">
-      Last update: -
+      Update terakhir: -
     </p>
   </div>
 </div>
 
 <div class="row g-4 mb-4">
-  <!-- Temperature -->
   <div class="col-md-6 col-xl-3">
     <div class="glass-card p-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <span class="text-secondary fw-semibold"> Temperature </span>
+        <span class="text-secondary fw-semibold">Suhu</span>
       </div>
 
       <h2 class="metric-value">
@@ -34,11 +33,10 @@
     </div>
   </div>
 
-  <!-- Humidity -->
   <div class="col-md-6 col-xl-3">
     <div class="glass-card p-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <span class="text-secondary fw-semibold"> Humidity </span>
+        <span class="text-secondary fw-semibold">Kelembapan</span>
       </div>
 
       <h2 class="metric-value">
@@ -48,11 +46,10 @@
     </div>
   </div>
 
-  <!-- Power -->
   <div class="col-md-6 col-xl-3">
     <div class="glass-card p-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <span class="text-secondary fw-semibold"> Power Load </span>
+        <span class="text-secondary fw-semibold">Beban Daya</span>
       </div>
 
       <h2 class="metric-value">
@@ -66,19 +63,18 @@
     </div>
   </div>
 
-  <!-- Door & Power Status -->
   <div class="col-md-6 col-xl-3">
     <div class="glass-card p-4 h-100 d-flex flex-column justify-content-center">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <span class="text-secondary fw-semibold"> Door Status </span>
+        <span class="text-secondary fw-semibold">Status Pintu</span>
       </div>
 
       <h4 class="fw-bold mb-3" id="val-pintu">--</h4>
 
       <div
-        class="d-flex justify-content-between align-items-center border-top border-secondary pt-3 mt-auto"
+        class="d-flex justify-content-between align-items-center border-top pt-3 mt-auto"
       >
-        <span class="text-secondary fw-semibold small"> Mains Power </span>
+        <span class="text-secondary fw-semibold small">Sumber Listrik</span>
 
         <span class="badge bg-success" id="val-power"> ON </span>
       </div>
@@ -89,9 +85,7 @@
 <div class="row">
   <div class="col-12">
     <div class="glass-card p-4">
-      <h5 class="fw-semibold mb-3">
-        Power & Temperature Trends (Last 30 Records)
-      </h5>
+      <h5 class="fw-semibold mb-3">Grafik Suhu dan Daya Listrik</h5>
 
       <div style="height: 350px">
         <canvas id="monitorChart"></canvas>
@@ -99,30 +93,19 @@
     </div>
   </div>
 </div>
-
 {% endblock %} {% block scripts %}
-
 <script>
-  // =========================
-  // CHART INIT
-  // =========================
-
   const ctx = document.getElementById("monitorChart").getContext("2d");
 
-  let gradientTemp = ctx.createLinearGradient(0, 0, 0, 400);
-
+  const gradientTemp = ctx.createLinearGradient(0, 0, 0, 400);
   gradientTemp.addColorStop(0, "rgba(245, 158, 11, 0.5)");
-
   gradientTemp.addColorStop(1, "rgba(245, 158, 11, 0.0)");
 
-  let gradientPower = ctx.createLinearGradient(0, 0, 0, 400);
-
+  const gradientPower = ctx.createLinearGradient(0, 0, 0, 400);
   gradientPower.addColorStop(0, "rgba(56, 189, 248, 0.5)");
-
   gradientPower.addColorStop(1, "rgba(56, 189, 248, 0.0)");
 
   Chart.defaults.color = "#475569";
-
   Chart.defaults.font.family = "'Outfit', sans-serif";
 
   const monitorChart = new Chart(ctx, {
@@ -133,38 +116,23 @@
 
       datasets: [
         {
-          label: "Temperature (°C)",
-
+          label: "Suhu (°C)",
           data: [],
-
           borderColor: "#f59e0b",
-
           backgroundColor: gradientTemp,
-
           borderWidth: 2,
-
           tension: 0.4,
-
           fill: true,
-
           yAxisID: "y",
         },
-
         {
-          label: "Power (Watt)",
-
+          label: "Daya (Watt)",
           data: [],
-
           borderColor: "#38bdf8",
-
           backgroundColor: gradientPower,
-
           borderWidth: 2,
-
           tension: 0.4,
-
           fill: true,
-
           yAxisID: "y1",
         },
       ],
@@ -172,7 +140,6 @@
 
     options: {
       responsive: true,
-
       maintainAspectRatio: false,
 
       interaction: {
@@ -187,13 +154,9 @@
 
         tooltip: {
           backgroundColor: "rgba(255,255,255,0.9)",
-
           titleColor: "#1e293b",
-
           bodyColor: "#334155",
-
           borderColor: "rgba(0,0,0,0.1)",
-
           borderWidth: 1,
         },
       },
@@ -207,16 +170,12 @@
 
         y: {
           type: "linear",
-
           display: true,
-
           position: "left",
-
           title: {
             display: true,
-            text: "Temperature (°C)",
+            text: "Suhu (°C)",
           },
-
           grid: {
             color: "rgba(0,0,0,0.05)",
           },
@@ -224,16 +183,12 @@
 
         y1: {
           type: "linear",
-
           display: true,
-
           position: "right",
-
           title: {
             display: true,
-            text: "Power (W)",
+            text: "Daya (Watt)",
           },
-
           grid: {
             drawOnChartArea: false,
           },
@@ -242,77 +197,65 @@
     },
   });
 
-  // =========================
-  // LOAD CHART
-  // =========================
+  function toNumber(value, decimal = 1) {
+    const number = parseFloat(value);
+
+    if (isNaN(number)) {
+      return "--";
+    }
+
+    return number.toFixed(decimal);
+  }
 
   function loadChartData() {
     $.getJSON("/api/chart", function (data) {
-      if (data.labels) {
+      if (data && data.labels) {
         monitorChart.data.labels = data.labels;
-
-        monitorChart.data.datasets[0].data = data.suhu;
-
-        monitorChart.data.datasets[1].data = data.watt;
-
+        monitorChart.data.datasets[0].data = data.suhu || [];
+        monitorChart.data.datasets[1].data = data.watt || [];
         monitorChart.update();
       }
     });
   }
 
-  // =========================
-  // FETCH LATEST DATA
-  // =========================
-
   function fetchLatestData() {
     $.getJSON("/api/latest", function (data) {
       if (data && Object.keys(data).length > 0) {
-        $("#val-suhu").text(parseFloat(data.suhu).toFixed(1));
+        $("#conn-status")
+          .removeClass("bg-danger")
+          .addClass("bg-success")
+          .text("System Online");
 
-        $("#val-lembab").text(parseFloat(data.kelembapan).toFixed(1));
+        $("#val-suhu").text(toNumber(data.suhu, 1));
+        $("#val-lembab").text(toNumber(data.kelembapan, 1));
+        $("#val-watt").text(toNumber(data.daya_watt, 0));
+        $("#val-amper").text(toNumber(data.arus_listrik, 2));
 
-        $("#val-watt").text(parseFloat(data.daya_watt).toFixed(0));
-
-        $("#val-amper").text(parseFloat(data.arus_listrik).toFixed(2));
-
-        // =========================
-        // DOOR STATUS
-        // =========================
-
-        let isPintuTerbuka = parseInt(data.status_pintu) == 1;
-
-        let pintuElem = $("#val-pintu");
+        const isPintuTerbuka = parseInt(data.status_pintu) === 1;
+        const pintuElem = $("#val-pintu");
 
         if (isPintuTerbuka) {
           pintuElem
-            .text("OPEN")
+            .text("TERBUKA")
             .removeClass("text-success")
             .addClass("text-danger");
         } else {
           pintuElem
-            .text("CLOSED")
+            .text("TERTUTUP")
             .removeClass("text-danger")
             .addClass("text-success");
         }
 
-        // =========================
-        // POWER STATUS
-        // =========================
+        const powerStatus = parseInt(data.power_status);
+        const powerElem = $("#val-power");
 
-        let powerStatus = parseInt(data.power_status);
-
-        let powerElem = $("#val-power");
-
-        if (powerStatus == 0) {
-          powerElem
-            .text("OFF (ALERT)")
-            .removeClass("bg-success")
-            .addClass("bg-danger");
+        if (powerStatus === 0) {
+          powerElem.text("OFF").removeClass("bg-success").addClass("bg-danger");
         } else {
           powerElem.text("ON").removeClass("bg-danger").addClass("bg-success");
         }
 
-        $("#last-update").text("Last update: " + data.created_at);
+        $("#last-update").text("Update terakhir: " + data.created_at);
       }
     }).fail(function () {
       $("#conn-status")
@@ -322,21 +265,10 @@
     });
   }
 
-  // =========================
-  // INITIAL LOAD
-  // =========================
-
   loadChartData();
-
   fetchLatestData();
 
-  // =========================
-  // AUTO REFRESH
-  // =========================
-
   setInterval(fetchLatestData, 2000);
-
   setInterval(loadChartData, 10000);
 </script>
-
 {% endblock %}
