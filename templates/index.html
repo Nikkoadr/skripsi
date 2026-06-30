@@ -246,10 +246,11 @@
             .addClass("text-success");
         }
 
-        const powerStatus = parseInt(data.power_status);
         const powerElem = $("#val-power");
+        const watt = parseFloat(data.daya_watt) || 0;
 
-        if (powerStatus === 0) {
+        // OFF jika daya kurang dari 1 Watt
+        if (watt < 1) {
           powerElem.text("OFF").removeClass("bg-success").addClass("bg-danger");
         } else {
           powerElem.text("ON").removeClass("bg-danger").addClass("bg-success");
