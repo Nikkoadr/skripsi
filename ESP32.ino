@@ -9,13 +9,13 @@
 // =========================================================
 // WIFI CONFIG
 // =========================================================
-const char* WIFI_SSID = "Toucan";
-const char* WIFI_PASS = "Rahasiadong99*";
+const char* WIFI_SSID = "Nikko Adrian";
+const char* WIFI_PASS = "konci123";
 
 // =========================================================
 // MQTT CONFIG
 // =========================================================
-const char* MQTT_BROKER = "192.168.1.16";
+const char* MQTT_BROKER = "172.20.10.2";
 const int   MQTT_PORT   = 1883;
 const char* MQTT_TOPIC  = "220511203/monitoring/server/data";
 const char* MQTT_USER   = "nikkoadr";

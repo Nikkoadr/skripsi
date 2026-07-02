@@ -94,7 +94,7 @@ LEMBAB_ATAS = 70.0
 LEMBAB_BAWAH = 30.0
 
 WATT_ATAS = 3500.0
-AMPER_BAWAH = 0.5
+AMPER_BAWAH = 0.4
 
 
 # =========================================================
