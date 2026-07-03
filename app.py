@@ -94,7 +94,7 @@ LEMBAB_ATAS = 70.0
 LEMBAB_BAWAH = 30.0
 
 WATT_ATAS = 3500.0
-AMPER_BAWAH = 0.200  # Ambang batas deteksi listrik padam / server mati
+AMPER_BAWAH = 0.190
 
 
 # =========================================================
@@ -124,35 +124,29 @@ POWER_ON = 1
 # ALERT STATE
 # =========================================================
 class AlertState:
-    # Suhu
     suhu_tinggi = False
     suhu_rendah = False
     overheat_kritis = False
     waktu_overheat = 0
     shutdown_overheat_sent = False
     
-    # Kelembapan
     lembab_tinggi = False
     lembab_rendah = False
     
-    # Listrik
     daya_overload = False
     arus_mati = False
     waktu_arus_mati = 0
     shutdown_arus_sent = False
     
-    # Server mati (khusus untuk deteksi arus < 0.200A)
     server_mati = False
     waktu_server_mati = 0
     shutdown_server_sent = False
     notifikasi_server_mati_sent = False
     
-    # Pintu
     pintu_terbuka = False
     waktu_buka_pintu = 0
     alarm_pintu_sent = False
     
-    # Cooldown untuk notifikasi berulang
     last_notification_time = 0
 
 
