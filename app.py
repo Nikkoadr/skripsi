@@ -541,14 +541,14 @@ def handle_listrik(amper, watt):
         if not alert_state.server_mati:
             # Pertama kali terdeteksi server mati
             msg_text = (
-                f"⚠️ SERVER DALAM KONDISI MATI ⚠️\n"
+                f"⚠️ LISTRIK UTAMA MATI ⚠️\n"
                 f"Arus terdeteksi: {amper:.3f} A\n"
-                f"Server tidak beroperasi / listrik padam total.\n"
-                f"Shutdown akan dilakukan dalam {DURASI_MAKS_ARUS_MATI//60} menit."
+                f"Listrik utama padam total.\n"
+                f"Shutdown server akan dilakukan dalam {DURASI_MAKS_ARUS_MATI//60} menit."
             )
 
             send_telegram_msg(msg_text, is_urgent=True)
-            log_event("Server Status", msg_text, STATUS_BAHAYA)
+            log_event("Listrik Utama", msg_text, STATUS_BAHAYA)
 
             alert_state.server_mati = True
             alert_state.waktu_server_mati = current_time
@@ -568,7 +568,7 @@ def handle_listrik(amper, watt):
             # Kirim notifikasi setiap 60 detik
             if durasi_mati % 60 < 2 and durasi_mati > 0:
                 msg_periodik = (
-                    f"⏰ SERVER MASIH MATI\n"
+                    f"⏰ LISTRIK MASIH MATI\n"
                     f"Durasi: {int(durasi_mati)} detik\n"
                     f"Arus: {amper:.3f} A\n"
                     f"Shutdown dalam {max(0, DURASI_MAKS_ARUS_MATI - int(durasi_mati))} detik."
@@ -581,7 +581,7 @@ def handle_listrik(amper, watt):
                 and
                 not alert_state.shutdown_server_sent
             ):
-                shutdown_system("Server mati - Arus < 0.200A selama 5 menit")
+                shutdown_system("Listrik utama mati - Arus < 0.200A selama 5 menit")
 
     # =========================================================
     # LISTRIK KEMBALI NORMAL (arus >= 0.200A)
@@ -590,14 +590,14 @@ def handle_listrik(amper, watt):
         # Server hidup kembali
         if alert_state.server_mati:
             msg_text = (
-                f"✅ SERVER KEMBALI HIDUP ✅\n"
+                f"✅ LISTRIK KEMBALI NORMAL ✅\n"
                 f"Arus terdeteksi: {amper:.3f} A\n"
-                f"Server kembali beroperasi normal.\n"
+                f"Listrik utama kembali normal.\n"
                 f"Shutdown otomatis dibatalkan."
             )
 
             send_telegram_msg(msg_text)
-            log_event("Server Status", msg_text, STATUS_AMAN)
+            log_event("Listrik Utama", msg_text, STATUS_AMAN)
 
             alert_state.server_mati = False
             alert_state.waktu_server_mati = 0
