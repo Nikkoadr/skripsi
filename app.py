@@ -94,15 +94,16 @@ LEMBAB_ATAS = 70.0
 LEMBAB_BAWAH = 30.0
 
 WATT_ATAS = 3500.0
-AMPER_BAWAH = 0.200
+AMPER_BAWAH = 0.200  # Ambang batas deteksi listrik padam / server mati
 
 
 # =========================================================
 # DURASI DETEKSI
 # =========================================================
-DURASI_MAKS_PINTU = 300
-DURASI_MAKS_ARUS_MATI = 300
-DURASI_MAKS_OVERHEAT = 300
+DURASI_MAKS_PINTU = 300          # 5 menit
+DURASI_MAKS_ARUS_MATI = 300      # 5 menit
+DURASI_MAKS_OVERHEAT = 300       # 5 menit
+DURASI_KOOLDOWN_NOTIFIKASI = 300 # 5 menit cooldown notifikasi
 
 
 # =========================================================
@@ -123,25 +124,36 @@ POWER_ON = 1
 # ALERT STATE
 # =========================================================
 class AlertState:
+    # Suhu
     suhu_tinggi = False
     suhu_rendah = False
-
     overheat_kritis = False
     waktu_overheat = 0
     shutdown_overheat_sent = False
-
+    
+    # Kelembapan
     lembab_tinggi = False
     lembab_rendah = False
-
+    
+    # Listrik
     daya_overload = False
-
     arus_mati = False
     waktu_arus_mati = 0
     shutdown_arus_sent = False
-
+    
+    # Server mati (khusus untuk deteksi arus < 0.200A)
+    server_mati = False
+    waktu_server_mati = 0
+    shutdown_server_sent = False
+    notifikasi_server_mati_sent = False
+    
+    # Pintu
     pintu_terbuka = False
     waktu_buka_pintu = 0
     alarm_pintu_sent = False
+    
+    # Cooldown untuk notifikasi berulang
+    last_notification_time = 0
 
 
 alert_state = AlertState()
@@ -178,15 +190,21 @@ def safe_float(value, default=0.0):
 # =========================================================
 # TELEGRAM
 # =========================================================
-def send_telegram_msg(message):
+def send_telegram_msg(message, is_urgent=False):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
+    # Tambahkan emoji untuk urgensi
+    if is_urgent:
+        prefix = "🚨 DARURAT 🚨\n\n"
+    else:
+        prefix = "📊 Monitoring Ruang Server\n\n"
+
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": f"Monitoring Ruang Server\n\n{message}"
+        "text": f"{prefix}{message}"
     }
 
     try:
@@ -282,11 +300,8 @@ def save_monitoring_log(suhu, lembab, amper, watt, pintu):
             else PINTU_TERTUTUP
         )
 
-        power_status_db = (
-            POWER_OFF
-            if amper < AMPER_BAWAH
-            else POWER_ON
-        )
+        # Deteksi server mati jika arus < 0.200A
+        power_status_db = POWER_OFF if amper < AMPER_BAWAH else POWER_ON
 
         values = (
             suhu,
@@ -320,6 +335,16 @@ def save_monitoring_log(suhu, lembab, amper, watt, pintu):
 def shutdown_system(reason):
     print(f"[SYSTEM] Shutdown dipanggil. Alasan: {reason}")
 
+    # Kirim notifikasi shutdown
+    msg_shutdown = (
+        f"⚠️ SYSTEM SHUTDOWN ⚠️\n"
+        f"Alasan: {reason}\n"
+        f"Server akan dimatikan dalam 10 detik."
+    )
+    send_telegram_msg(msg_shutdown, is_urgent=True)
+    log_event("Sistem", msg_shutdown, STATUS_BAHAYA)
+
+    # Eksekusi shutdown
     if os.name == "nt":
         os.system("shutdown /s /t 10")
     else:
@@ -390,8 +415,9 @@ def load_user(user_id):
 def handle_suhu(suhu):
     if suhu > SUHU_ATAS and not alert_state.suhu_tinggi:
         msg_text = (
-            f"PERINGATAN SUHU TINGGI\n"
-            f"Suhu ruang server mencapai {suhu:.1f} °C"
+            f"⚠️ PERINGATAN SUHU TINGGI\n"
+            f"Suhu ruang server mencapai {suhu:.1f} °C\n"
+            f"Batas aman: {SUHU_ATAS} °C"
         )
 
         send_telegram_msg(msg_text)
@@ -400,7 +426,7 @@ def handle_suhu(suhu):
         alert_state.suhu_tinggi = True
 
     elif suhu <= SUHU_ATAS and alert_state.suhu_tinggi:
-        msg_text = f"Suhu kembali normal: {suhu:.1f} °C"
+        msg_text = f"✅ Suhu kembali normal: {suhu:.1f} °C"
 
         send_telegram_msg(msg_text)
         log_event("Suhu", msg_text, STATUS_AMAN)
@@ -413,12 +439,12 @@ def handle_suhu(suhu):
     if suhu >= SUHU_KRITIS:
         if not alert_state.overheat_kritis:
             msg_text = (
-                f"SUHU KRITIS\n"
+                f"🔥 SUHU KRITIS 🔥\n"
                 f"Suhu ruang server mencapai {suhu:.1f} °C\n"
-                f"Shutdown otomatis dalam 5 menit jika suhu tidak turun."
+                f"Shutdown otomatis dalam {DURASI_MAKS_OVERHEAT//60} menit jika suhu tidak turun."
             )
 
-            send_telegram_msg(msg_text)
+            send_telegram_msg(msg_text, is_urgent=True)
             log_event("Suhu", msg_text, STATUS_BAHAYA)
 
             alert_state.overheat_kritis = True
@@ -433,23 +459,13 @@ def handle_suhu(suhu):
                 and
                 not alert_state.shutdown_overheat_sent
             ):
-                msg_shutdown = (
-                    "OVERHEAT KRITIS\n"
-                    "Sistem melakukan shutdown otomatis "
-                    "untuk mencegah kerusakan server."
-                )
-
-                send_telegram_msg(msg_shutdown)
-                log_event("Sistem", msg_shutdown, STATUS_BAHAYA)
-
-                alert_state.shutdown_overheat_sent = True
-
-                shutdown_system("Overheat kritis")
+                shutdown_system("Overheat kritis - Suhu melewati batas selama 5 menit")
 
     if suhu < SUHU_BAWAH and not alert_state.suhu_rendah:
         msg_text = (
-            f"PERINGATAN SUHU RENDAH\n"
-            f"Suhu ruang server {suhu:.1f} °C"
+            f"❄️ PERINGATAN SUHU RENDAH\n"
+            f"Suhu ruang server {suhu:.1f} °C\n"
+            f"Batas aman: {SUHU_BAWAH} °C"
         )
 
         send_telegram_msg(msg_text)
@@ -458,7 +474,7 @@ def handle_suhu(suhu):
         alert_state.suhu_rendah = True
 
     elif suhu >= SUHU_BAWAH and alert_state.suhu_rendah:
-        msg_text = f"Suhu dingin kembali normal: {suhu:.1f} °C"
+        msg_text = f"✅ Suhu dingin kembali normal: {suhu:.1f} °C"
 
         send_telegram_msg(msg_text)
         log_event("Suhu", msg_text, STATUS_AMAN)
@@ -472,8 +488,9 @@ def handle_suhu(suhu):
 def handle_kelembapan(lembab):
     if lembab > LEMBAB_ATAS and not alert_state.lembab_tinggi:
         msg_text = (
-            f"KELEMBAPAN TINGGI\n"
-            f"Kelembapan mencapai {lembab:.0f}%"
+            f"💧 KELEMBAPAN TINGGI\n"
+            f"Kelembapan mencapai {lembab:.0f}%\n"
+            f"Batas aman: {LEMBAB_ATAS}%"
         )
 
         send_telegram_msg(msg_text)
@@ -482,7 +499,7 @@ def handle_kelembapan(lembab):
         alert_state.lembab_tinggi = True
 
     elif lembab <= LEMBAB_ATAS and alert_state.lembab_tinggi:
-        msg_text = f"Kelembapan kembali normal: {lembab:.0f}%"
+        msg_text = f"✅ Kelembapan kembali normal: {lembab:.0f}%"
 
         send_telegram_msg(msg_text)
         log_event("Kelembapan", msg_text, STATUS_AMAN)
@@ -491,8 +508,9 @@ def handle_kelembapan(lembab):
 
     if lembab < LEMBAB_BAWAH and not alert_state.lembab_rendah:
         msg_text = (
-            f"KELEMBAPAN RENDAH\n"
-            f"Kelembapan mencapai {lembab:.0f}%"
+            f"🏜️ KELEMBAPAN RENDAH\n"
+            f"Kelembapan mencapai {lembab:.0f}%\n"
+            f"Batas aman: {LEMBAB_BAWAH}%"
         )
 
         send_telegram_msg(msg_text)
@@ -501,9 +519,7 @@ def handle_kelembapan(lembab):
         alert_state.lembab_rendah = True
 
     elif lembab >= LEMBAB_BAWAH and alert_state.lembab_rendah:
-        msg_text = (
-            f"Kelembapan rendah kembali normal: {lembab:.0f}%"
-        )
+        msg_text = f"✅ Kelembapan rendah kembali normal: {lembab:.0f}%"
 
         send_telegram_msg(msg_text)
         log_event("Kelembapan", msg_text, STATUS_AMAN)
@@ -512,77 +528,116 @@ def handle_kelembapan(lembab):
 
 
 # =========================================================
-# HANDLE LISTRIK
+# HANDLE LISTRIK (DIMODIFIKASI)
 # =========================================================
 def handle_listrik(amper, watt):
+    current_time = time.time()
+    
+    # =========================================================
+    # DETEKSI SERVER MATI (arus < 0.200A)
+    # =========================================================
     if amper < AMPER_BAWAH:
-        if not alert_state.arus_mati:
+        # Server dalam kondisi mati
+        if not alert_state.server_mati:
+            # Pertama kali terdeteksi server mati
             msg_text = (
-                f"LISTRIK PADAM\n"
-                f"Arus terdeteksi: {amper:.2f} A\n"
-                f"Server akan shutdown otomatis dalam 5 menit."
+                f"⚠️ SERVER DALAM KONDISI MATI ⚠️\n"
+                f"Arus terdeteksi: {amper:.3f} A\n"
+                f"Server tidak beroperasi / listrik padam total.\n"
+                f"Shutdown akan dilakukan dalam {DURASI_MAKS_ARUS_MATI//60} menit."
             )
 
-            send_telegram_msg(msg_text)
-            log_event("Listrik", msg_text, STATUS_BAHAYA)
+            send_telegram_msg(msg_text, is_urgent=True)
+            log_event("Server Status", msg_text, STATUS_BAHAYA)
 
-            alert_state.arus_mati = True
-            alert_state.waktu_arus_mati = time.time()
+            alert_state.server_mati = True
+            alert_state.waktu_server_mati = current_time
+            alert_state.shutdown_server_sent = False
+            alert_state.notifikasi_server_mati_sent = True
+            
+            # Reset status lainnya
+            alert_state.arus_mati = False
+            alert_state.waktu_arus_mati = 0
             alert_state.shutdown_arus_sent = False
             alert_state.daya_overload = False
 
         else:
-            durasi_mati = time.time() - alert_state.waktu_arus_mati
+            # Server sudah dalam kondisi mati, cek durasi
+            durasi_mati = current_time - alert_state.waktu_server_mati
+            
+            # Kirim notifikasi setiap 60 detik
+            if durasi_mati % 60 < 2 and durasi_mati > 0:
+                msg_periodik = (
+                    f"⏰ SERVER MASIH MATI\n"
+                    f"Durasi: {int(durasi_mati)} detik\n"
+                    f"Arus: {amper:.3f} A\n"
+                    f"Shutdown dalam {max(0, DURASI_MAKS_ARUS_MATI - int(durasi_mati))} detik."
+                )
+                send_telegram_msg(msg_periodik)
 
+            # Shutdown jika sudah melewati batas waktu
             if (
                 durasi_mati >= DURASI_MAKS_ARUS_MATI
                 and
-                not alert_state.shutdown_arus_sent
+                not alert_state.shutdown_server_sent
             ):
-                msg_shutdown = (
-                    "UPS HABIS\n"
-                    "Sistem melakukan shutdown server otomatis."
-                )
+                shutdown_system("Server mati - Arus < 0.200A selama 5 menit")
 
-                send_telegram_msg(msg_shutdown)
-                log_event("Sistem", msg_shutdown, STATUS_BAHAYA)
-
-                alert_state.shutdown_arus_sent = True
-
-                shutdown_system("Listrik padam / UPS habis")
-
-    elif watt > WATT_ATAS:
-        if not alert_state.daya_overload:
-            msg_text = (
-                f"BEBAN DAYA BERLEBIH\n"
-                f"Arus: {amper:.2f} A\n"
-                f"Daya: {watt:.1f} Watt"
-            )
-
-            send_telegram_msg(msg_text)
-            log_event("Listrik", msg_text, STATUS_BAHAYA)
-
-            alert_state.daya_overload = True
-            alert_state.arus_mati = False
-            alert_state.waktu_arus_mati = 0
-            alert_state.shutdown_arus_sent = False
-
+    # =========================================================
+    # LISTRIK KEMBALI NORMAL (arus >= 0.200A)
+    # =========================================================
     else:
-        if alert_state.arus_mati or alert_state.daya_overload:
+        # Server hidup kembali
+        if alert_state.server_mati:
             msg_text = (
-                f"LISTRIK KEMBALI NORMAL\n"
-                f"Arus: {amper:.2f} A\n"
-                f"Daya: {watt:.1f} Watt\n"
+                f"✅ SERVER KEMBALI HIDUP ✅\n"
+                f"Arus terdeteksi: {amper:.3f} A\n"
+                f"Server kembali beroperasi normal.\n"
                 f"Shutdown otomatis dibatalkan."
             )
 
             send_telegram_msg(msg_text)
-            log_event("Listrik", msg_text, STATUS_AMAN)
+            log_event("Server Status", msg_text, STATUS_AMAN)
 
-            alert_state.arus_mati = False
-            alert_state.waktu_arus_mati = 0
-            alert_state.shutdown_arus_sent = False
-            alert_state.daya_overload = False
+            alert_state.server_mati = False
+            alert_state.waktu_server_mati = 0
+            alert_state.shutdown_server_sent = False
+            alert_state.notifikasi_server_mati_sent = False
+
+        # DETEKSI DAYA OVERLOAD
+        if watt > WATT_ATAS:
+            if not alert_state.daya_overload:
+                msg_text = (
+                    f"⚡ BEBAN DAYA BERLEBIH ⚡\n"
+                    f"Arus: {amper:.3f} A\n"
+                    f"Daya: {watt:.1f} Watt\n"
+                    f"Batas aman: {WATT_ATAS} Watt"
+                )
+
+                send_telegram_msg(msg_text, is_urgent=True)
+                log_event("Listrik", msg_text, STATUS_BAHAYA)
+
+                alert_state.daya_overload = True
+                alert_state.arus_mati = False
+                alert_state.waktu_arus_mati = 0
+                alert_state.shutdown_arus_sent = False
+
+        # KONDISI NORMAL
+        else:
+            if alert_state.arus_mati or alert_state.daya_overload:
+                msg_text = (
+                    f"✅ LISTRIK KEMBALI NORMAL\n"
+                    f"Arus: {amper:.3f} A\n"
+                    f"Daya: {watt:.1f} Watt"
+                )
+
+                send_telegram_msg(msg_text)
+                log_event("Listrik", msg_text, STATUS_AMAN)
+
+                alert_state.arus_mati = False
+                alert_state.waktu_arus_mati = 0
+                alert_state.shutdown_arus_sent = False
+                alert_state.daya_overload = False
 
 
 # =========================================================
@@ -595,16 +650,16 @@ def handle_pintu(pintu, alarm_pintu_esp=False):
         alert_state.pintu_terbuka = is_pintu_terbuka
 
         if is_pintu_terbuka:
-            status_msg = "PINTU RUANG SERVER DIBUKA"
+            status_msg = "🚪 PINTU RUANG SERVER DIBUKA 🚪"
 
-            send_telegram_msg(status_msg)
+            send_telegram_msg(status_msg, is_urgent=True)
             log_event("Keamanan", status_msg, STATUS_WARNING)
 
             alert_state.waktu_buka_pintu = time.time()
             alert_state.alarm_pintu_sent = False
 
         else:
-            status_msg = "PINTU RUANG SERVER DITUTUP"
+            status_msg = "✅ PINTU RUANG SERVER DITUTUP"
 
             send_telegram_msg(status_msg)
             log_event("Keamanan", status_msg, STATUS_AMAN)
@@ -615,6 +670,15 @@ def handle_pintu(pintu, alarm_pintu_esp=False):
     if alert_state.pintu_terbuka:
         durasi_pintu = time.time() - alert_state.waktu_buka_pintu
 
+        # Kirim notifikasi peringatan setiap 60 detik
+        if durasi_pintu % 60 < 2 and durasi_pintu > 0:
+            msg_periodik = (
+                f"⏰ PINTU MASIH TERBUKA\n"
+                f"Durasi: {int(durasi_pintu)} detik\n"
+                f"Alarm akan aktif dalam {max(0, DURASI_MAKS_PINTU - int(durasi_pintu))} detik."
+            )
+            send_telegram_msg(msg_periodik)
+
         if (
             durasi_pintu >= DURASI_MAKS_PINTU
             or
@@ -622,11 +686,12 @@ def handle_pintu(pintu, alarm_pintu_esp=False):
         ):
             if not alert_state.alarm_pintu_sent:
                 msg_pintu_lama = (
-                    "PERINGATAN KEAMANAN\n"
-                    "Pintu ruang server terbuka lebih dari 5 menit."
+                    "🔴 PERINGATAN KEAMANAN 🔴\n"
+                    "Pintu ruang server terbuka lebih dari 5 menit!\n"
+                    "Segera periksa keamanan ruang server."
                 )
 
-                send_telegram_msg(msg_pintu_lama)
+                send_telegram_msg(msg_pintu_lama, is_urgent=True)
                 log_event("Keamanan", msg_pintu_lama, STATUS_BAHAYA)
 
                 alert_state.alarm_pintu_sent = True
@@ -681,10 +746,10 @@ def on_mqtt_message(client, userdata, msg):
 
         print(
             f"[DATA] "
-            f"Suhu={suhu}°C | "
-            f"Lembab={lembab}% | "
-            f"Arus={amper}A | "
-            f"Daya={watt}W | "
+            f"Suhu={suhu:.1f}°C | "
+            f"Lembab={lembab:.1f}% | "
+            f"Arus={amper:.3f}A | "
+            f"Daya={watt:.1f}W | "
             f"Pintu={pintu} | "
             f"AlarmPintu={alarm_pintu_esp}"
         )
