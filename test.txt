@@ -1,0 +1,22 @@
+username dan password
+
+mysql(mariadb server)
+username : nikkoadr
+password : 1234567800
+
+login sistem monitoring
+email : nikko@skripsi.com
+password : 1234567800
+
+mqtt auth
+username : nikkoadr
+password : 1234567800
+
+login vm server
+username : root
+password : 1234567800
+
+MQTT_TOPIC=220511203/monitoring/server/data
+
+TELEGRAM_BOT_TOKEN=7249120681:AAGbVY55MPnH7sLCK17lOeO0PtBJJ2e97V4
+TELEGRAM_CHAT_ID=986175529

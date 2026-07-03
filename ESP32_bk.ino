@@ -36,16 +36,13 @@ const char* MQTT_PASS   = "1234567800";
 // SENSOR CONFIG
 // =========================================================
 #define DHT_TYPE             DHT22
+#define CALIBRATION_FACTOR   71.22
+#define NOISE_THRESHOLD      0.40
 #define VOLTAGE_PLN          220.0
-
-// Konfigurasi baru untuk pembacaan arus
 #define ADC_VREF             3.3
 #define ADC_RES              4095.0
-#define CALIBRATION_FACTOR   80.0
-#define RMS_SAMPLES          2000
-#define OVERSAMPLE           4
-#define FILTER_SIZE          5
-#define DEADBAND_THRESHOLD   0.03
+#define CURRENT_SAMPLES      500
+#define SAMPLING_PERIOD      150
 
 // =========================================================
 // OLED CONFIG
@@ -86,12 +83,6 @@ unsigned long lastMqttSend         = 0;
 unsigned long lastOLEDUpdate       = 0;
 unsigned long lastReconnectAttempt = 0;
 unsigned long waktuPintuTerbuka    = 0;
-
-// Variabel untuk pembacaan arus
-uint16_t adcBuffer[RMS_SAMPLES];
-float rmsHistory[FILTER_SIZE];
-uint8_t filterIndex = 0;
-bool filterFull = false;
 
 // =========================================================
 // SETUP WIFI
@@ -161,75 +152,40 @@ void bacaSensorDHT() {
 }
 
 // =========================================================
-// BACA SENSOR ARUS SCT-013 (Metode baru yang lebih akurat)
+// BACA SENSOR ARUS SCT-013
 // =========================================================
 void bacaSensorArus() {
-  //----------------------------------------
-  // PASS-1: Oversampling dan pengambilan sampel
-  //----------------------------------------
-  uint32_t totalADC = 0;
+  float midpoint = 0.0;
+  float sumV     = 0.0;
+  uint32_t n     = 0;
 
-  for (int i = 0; i < RMS_SAMPLES; i++) {
-    uint32_t oversample = 0;
-
-    for (int j = 0; j < OVERSAMPLE; j++) {
-      oversample += analogRead(PIN_SCT);
-    }
-
-    adcBuffer[i] = oversample / OVERSAMPLE;
-    totalADC += adcBuffer[i];
-
-    delayMicroseconds(120);
+  for (int i = 0; i < CURRENT_SAMPLES; i++) {
+    midpoint += analogRead(PIN_SCT);
   }
 
-  //----------------------------------------
-  // Hitung MIDPOINT (nilai tengah DC offset)
-  //----------------------------------------
-  float midpoint = (float)totalADC / RMS_SAMPLES;
+  midpoint /= (float) CURRENT_SAMPLES;
 
-  //----------------------------------------
-  // PASS-2: Hitung RMS
-  //----------------------------------------
-  double sumSquare = 0;
+  uint32_t startTime = millis();
 
-  for (int i = 0; i < RMS_SAMPLES; i++) {
-    float voltage = (adcBuffer[i] - midpoint);
-    voltage *= ADC_VREF;
-    voltage /= ADC_RES;
-    sumSquare += voltage * voltage;
+  while ((millis() - startTime) < SAMPLING_PERIOD) {
+    int raw = analogRead(PIN_SCT);
+
+    float voltage = (raw - midpoint) * ADC_VREF / ADC_RES;
+
+    sumV += voltage * voltage;
+    n++;
   }
 
-  float vrms = sqrt(sumSquare / RMS_SAMPLES);
-  float current = vrms * CALIBRATION_FACTOR;
-
-  //----------------------------------------
-  // Moving Average (filter untuk stabilitas)
-  //----------------------------------------
-  rmsHistory[filterIndex] = current;
-  filterIndex++;
-
-  if (filterIndex >= FILTER_SIZE) {
-    filterIndex = 0;
-    filterFull = true;
+  if (n == 0) {
+    arusRMS  = 0.0;
+    dayaWatt = 0.0;
+    return;
   }
 
-  uint8_t jumlah = filterFull ? FILTER_SIZE : filterIndex;
-  float total = 0;
+  float vRMS  = sqrt(sumV / n);
+  float iCalc = vRMS * CALIBRATION_FACTOR;
 
-  for (int i = 0; i < jumlah; i++) {
-    total += rmsHistory[i];
-  }
-
-  current = total / jumlah;
-
-  //----------------------------------------
-  // Deadband (hilangkan noise)
-  //----------------------------------------
-  if (current < DEADBAND_THRESHOLD) {
-    current = 0;
-  }
-
-  arusRMS = current;
+  arusRMS = (iCalc < NOISE_THRESHOLD) ? 0.0 : iCalc;
   dayaWatt = arusRMS * VOLTAGE_PLN;
 }
 
@@ -252,6 +208,7 @@ void handleSecurity() {
 
   if (alarmPintu) {
     bool blinkState = (millis() / 500) % 2;
+
     digitalWrite(LED_BUILTIN, blinkState);
     digitalWrite(PIN_BUZZER, blinkState);
   } else {
@@ -276,7 +233,7 @@ void updateOLED() {
 
   oled.printf("Suhu   : %.1f C\n", suhu);
   oled.printf("Lembab : %.0f %%\n", lembab);
-  oled.printf("Arus   : %.3f A\n", arusRMS);
+  oled.printf("Arus   : %.2f A\n", arusRMS);
   oled.printf("Daya   : %.0f Watt\n", dayaWatt);
 
   if (alarmPintu) {
