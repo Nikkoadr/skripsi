@@ -326,7 +326,7 @@ def save_monitoring_log(suhu, lembab, amper, watt, pintu):
 
 
 # =========================================================
-# SHUTDOWN SYSTEM
+# SHUTDOWN SYSTEM (DIPERBAIKI - LANGSUNG MATI)
 # =========================================================
 def shutdown_system(reason):
     print(f"[SYSTEM] Shutdown dipanggil. Alasan: {reason}")
@@ -335,7 +335,7 @@ def shutdown_system(reason):
     msg_shutdown = (
         f"⚠️ SYSTEM SHUTDOWN ⚠️\n"
         f"Alasan: {reason}\n"
-        f"Server akan dimatikan dalam 10 detik."
+        f"Server akan dimatikan."
     )
     send_telegram_msg(msg_shutdown, is_urgent=True)
     log_event("SYSTEM_SHUTDOWN", msg_shutdown, STATUS_BAHAYA)
@@ -343,11 +343,17 @@ def shutdown_system(reason):
     # Update status server menjadi mati
     alert_state.server_hidup = False
 
-    # Eksekusi shutdown
+    # Set flag agar tidak dipanggil lagi
+    if reason.startswith("Listrik utama padam"):
+        alert_state.shutdown_listrik_sent = True
+    elif reason.startswith("Overheat kritis"):
+        alert_state.shutdown_overheat_sent = True
+
+    # Eksekusi shutdown LANGSUNG (tanpa delay 10 detik)
     if os.name == "nt":
-        os.system("shutdown /s /t 10")
+        os.system("shutdown /s /t 0")  # Langsung mati
     else:
-        os.system("sudo shutdown -h now")
+        os.system("sudo shutdown -h now")  # Langsung mati
 
 
 # =========================================================
@@ -532,7 +538,7 @@ def handle_kelembapan(lembab):
 
 
 # =========================================================
-# HANDLE LISTRIK (DIPERBAIKI SESUAI KONSEP)
+# HANDLE LISTRIK (DIPERBAIKI)
 # =========================================================
 def handle_listrik(amper, watt):
     current_time = time.time()
@@ -591,8 +597,6 @@ def handle_listrik(amper, watt):
         # =========================================================
         # DETEKSI SERVER HIDUP (Baru dinyalakan atau menyala kembali)
         # =========================================================
-        # Cek apakah server hidup (arus > 0.190A) dan sebelumnya mati
-        # Server dianggap "hidup" jika ada arus listrik yang masuk
         if not alert_state.server_hidup:
             # Server baru hidup (pertama kali atau setelah shutdown)
             msg_text = (
