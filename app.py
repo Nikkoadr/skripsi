@@ -552,12 +552,12 @@ def handle_listrik(amper, watt):
             # Catat event listrik padam
             msg_text = (
                 f"⚠️ LISTRIK UTAMA PADAM ⚠️\n"
-                f"Arus terdeteksi: {amper:.3f} A\n"
+                f"Arus terdeteksi: {amper:.2f} A\n"
                 f"Server akan shutdown otomatis dalam {DURASI_MAKS_ARUS_MATI//60} menit."
             )
 
             send_telegram_msg(msg_text, is_urgent=True)
-            log_event("LISTRIK_PADAM", f"Listrik utama padam - Arus: {amper:.3f}A", STATUS_BAHAYA)
+            log_event("LISTRIK_PADAM", f"Listrik utama padam - Arus: {amper:.2f}A", STATUS_BAHAYA)
 
             alert_state.listrik_mati = True
             alert_state.waktu_listrik_mati = current_time
@@ -583,12 +583,12 @@ def handle_listrik(amper, watt):
         if alert_state.listrik_mati:
             msg_text = (
                 f"✅ LISTRIK KEMBALI NORMAL ✅\n"
-                f"Arus terdeteksi: {amper:.3f} A\n"
+                f"Arus terdeteksi: {amper:.2f} A\n"
                 f"Shutdown otomatis dibatalkan."
             )
 
             send_telegram_msg(msg_text)
-            log_event("LISTRIK_NORMAL", f"Listrik kembali normal - Arus: {amper:.3f}A", STATUS_AMAN)
+            log_event("LISTRIK_NORMAL", f"Listrik kembali normal - Arus: {amper:.2f}A", STATUS_AMAN)
 
             alert_state.listrik_mati = False
             alert_state.waktu_listrik_mati = 0
@@ -601,12 +601,12 @@ def handle_listrik(amper, watt):
             # Server baru hidup (pertama kali atau setelah shutdown)
             msg_text = (
                 f"✅ SERVER HIDUP ✅\n"
-                f"Arus terdeteksi: {amper:.3f} A\n"
+                f"Arus terdeteksi: {amper:.2f} A\n"
                 f"Server berhasil dinyalakan dan beroperasi normal."
             )
 
             send_telegram_msg(msg_text)
-            log_event("SERVER_HIDUP", f"Server hidup - Arus: {amper:.3f}A", STATUS_AMAN)
+            log_event("SERVER_HIDUP", f"Server hidup - Arus: {amper:.2f}A", STATUS_AMAN)
 
             alert_state.server_hidup = True
             alert_state.server_pernah_hidup = True
@@ -618,7 +618,7 @@ def handle_listrik(amper, watt):
             if not alert_state.daya_overload:
                 msg_text = (
                     f"⚡ BEBAN DAYA BERLEBIH ⚡\n"
-                    f"Arus: {amper:.3f} A\n"
+                    f"Arus: {amper:.2f} A\n"
                     f"Daya: {watt:.1f} Watt\n"
                     f"Batas aman: {WATT_ATAS} Watt"
                 )
@@ -633,7 +633,7 @@ def handle_listrik(amper, watt):
             if alert_state.daya_overload:
                 msg_text = (
                     f"✅ DAYA KEMBALI NORMAL\n"
-                    f"Arus: {amper:.3f} A\n"
+                    f"Arus: {amper:.2f} A\n"
                     f"Daya: {watt:.1f} Watt"
                 )
 
@@ -742,7 +742,7 @@ def on_mqtt_message(client, userdata, msg):
             f"[DATA] "
             f"Suhu={suhu:.1f}°C | "
             f"Lembab={lembab:.1f}% | "
-            f"Arus={amper:.3f}A | "
+            f"Arus={amper:.2f}A | "
             f"Daya={watt:.1f}W | "
             f"Pintu={pintu} | "
             f"AlarmPintu={alarm_pintu_esp}"

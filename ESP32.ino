@@ -38,14 +38,27 @@ const char* MQTT_PASS   = "1234567800";
 #define DHT_TYPE             DHT22
 #define VOLTAGE_PLN          220.0
 
-// Konfigurasi baru untuk pembacaan arus
+// =========================================================
+// KONFIGURASI SCT-013 (DIMODIFIKASI UNTUK KALIBRASI)
+// =========================================================
 #define ADC_VREF             3.3
 #define ADC_RES              4095.0
-#define CALIBRATION_FACTOR   80.0
+
+// === KALIBRASI SCT-013 ===
+// Jika pembacaan terlalu tinggi, turunkan CALIBRATION_FACTOR
+// Jika pembacaan terlalu rendah, naikkan CALIBRATION_FACTOR
+// DEFAULT: 80.0
+//#define CALIBRATION_FACTOR   60.0  // <-- SESUAIKAN NILAI INI
+#define CALIBRATION_FACTOR   78.0
+// Offset untuk koreksi (jika ada pembacaan offset)
+// DEFAULT: 0.0
+#define OFFSET_CORRECTION    0.03  // <-- SESUAIKAN NILAI INI
+
 #define RMS_SAMPLES          2000
 #define OVERSAMPLE           4
 #define FILTER_SIZE          5
-#define DEADBAND_THRESHOLD   0.03
+#define DEADBAND_THRESHOLD   0.02
+#define AMPER_BAWAH          0.190
 
 // =========================================================
 // OLED CONFIG
@@ -78,6 +91,7 @@ float suhu     = 0.0;
 float lembab   = 0.0;
 float arusRMS  = 0.0;
 float dayaWatt = 0.0;
+float arusRaw   = 0.0;  // Untuk debugging
 
 bool statusPintu = false;
 bool alarmPintu  = false;
@@ -161,7 +175,7 @@ void bacaSensorDHT() {
 }
 
 // =========================================================
-// BACA SENSOR ARUS SCT-013 (Metode baru yang lebih akurat)
+// BACA SENSOR ARUS SCT-013 (DENGAN KALIBRASI)
 // =========================================================
 void bacaSensorArus() {
   //----------------------------------------
@@ -200,7 +214,19 @@ void bacaSensorArus() {
   }
 
   float vrms = sqrt(sumSquare / RMS_SAMPLES);
+  
+  // =========================================================
+  // APLIKASI KALIBRASI
+  // =========================================================
   float current = vrms * CALIBRATION_FACTOR;
+  
+  // Terapkan offset correction
+  if (current > 0) {
+    current = current - OFFSET_CORRECTION;
+  }
+  
+  // Simpan nilai raw untuk debugging
+  arusRaw = current;
 
   //----------------------------------------
   // Moving Average (filter untuk stabilitas)
@@ -229,8 +255,29 @@ void bacaSensorArus() {
     current = 0;
   }
 
+  // =========================================================
+  // CEK AMBANG BATAS ARUS
+  // Jika arus di bawah 0.190A, set ke 0
+  // =========================================================
+  if (current < AMPER_BAWAH) {
+    current = 0;
+  }
+
   arusRMS = current;
   dayaWatt = arusRMS * VOLTAGE_PLN;
+  
+  // =========================================================
+  // DEBUG: Tampilkan nilai di Serial Monitor
+  // =========================================================
+  static unsigned long lastDebugPrint = 0;
+  if (millis() - lastDebugPrint > 3000) {
+    Serial.print("[DEBUG] Raw: ");
+    Serial.print(arusRaw, 2);
+    Serial.print(" A | Filtered: ");
+    Serial.print(arusRMS, 2);
+    Serial.println(" A");
+    lastDebugPrint = millis();
+  }
 }
 
 // =========================================================
@@ -261,7 +308,7 @@ void handleSecurity() {
 }
 
 // =========================================================
-// UPDATE OLED
+// UPDATE OLED (DITAMBAHKAN ARUS RAW)
 // =========================================================
 void updateOLED() {
   if (millis() - lastOLEDUpdate < INTERVAL_OLED_UPDATE) return;
@@ -276,8 +323,11 @@ void updateOLED() {
 
   oled.printf("Suhu   : %.1f C\n", suhu);
   oled.printf("Lembab : %.0f %%\n", lembab);
-  oled.printf("Arus   : %.3f A\n", arusRMS);
+  oled.printf("Arus   : %.2f A\n", arusRMS);
   oled.printf("Daya   : %.0f Watt\n", dayaWatt);
+  
+  // Tampilkan nilai raw untuk debugging (opsional)
+  // oled.printf("Raw    : %.3f A\n", arusRaw);
 
   if (alarmPintu) {
     oled.println(F("Pintu  : !ALARM!"));
@@ -301,10 +351,15 @@ void publishMQTT() {
   if (mqtt.connected()) {
     StaticJsonDocument<256> doc;
 
-    doc["suhu"]   = suhu;
-    doc["lembab"] = lembab;
-    doc["amper"]  = arusRMS;
-    doc["watt"]   = dayaWatt;
+    float suhuBulat = round(suhu * 10.0) / 10.0;
+    float lembabBulat = round(lembab * 10.0) / 10.0;
+    float amperBulat = round(arusRMS * 100.0) / 100.0;
+    float wattBulat = round(dayaWatt * 10.0) / 10.0;
+
+    doc["suhu"]   = suhuBulat;
+    doc["lembab"] = lembabBulat;
+    doc["amper"]  = amperBulat;
+    doc["watt"]   = wattBulat;
     doc["pintu"]  = statusPintu ? "terbuka" : "tertutup";
     doc["alarm_pintu"] = alarmPintu ? "aktif" : "normal";
 
@@ -327,6 +382,12 @@ void publishMQTT() {
 // =========================================================
 void setup() {
   Serial.begin(115200);
+  
+  Serial.println(F("\n\n========================================"));
+  Serial.println(F("  SCT-013 CALIBRATION MODE"));
+  Serial.println(F("========================================"));
+  Serial.println(F("Tuning CALIBRATION_FACTOR dan OFFSET_CORRECTION"));
+  Serial.println(F("========================================\n"));
 
   Wire.begin(PIN_SDA, PIN_SCL);
 
@@ -359,6 +420,9 @@ void setup() {
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
 
   Serial.println(F("[SYSTEM] Node Monitoring Ruang Server Aktif!"));
+  Serial.println(F("\n[INFO] Gunakan Serial Monitor untuk kalibrasi"));
+  Serial.println(F("[INFO] Bandingkan dengan tang amper"));
+  Serial.println(F("[INFO] Sesuaikan CALIBRATION_FACTOR & OFFSET_CORRECTION\n"));
 }
 
 // =========================================================
