@@ -6,24 +6,15 @@
 #include <ArduinoJson.h>
 #include "DHT.h"
 
-// =========================================================
-// WIFI CONFIG
-// =========================================================
 const char* WIFI_SSID = "Nikko Adrian";
 const char* WIFI_PASS = "konci123";
 
-// =========================================================
-// MQTT CONFIG
-// =========================================================
 const char* MQTT_BROKER = "172.20.10.2";
 const int   MQTT_PORT   = 1883;
 const char* MQTT_TOPIC  = "220511203/monitoring/server/data";
 const char* MQTT_USER   = "nikkoadr";
 const char* MQTT_PASS   = "1234567800";
 
-// =========================================================
-// PIN CONFIG
-// =========================================================
 #define PIN_SCT       34
 #define PIN_DHT       23
 #define PIN_PINTU     18
@@ -32,27 +23,14 @@ const char* MQTT_PASS   = "1234567800";
 #define PIN_SCL       22
 #define LED_BUILTIN   2
 
-// =========================================================
-// SENSOR CONFIG
-// =========================================================
 #define DHT_TYPE             DHT22
 #define VOLTAGE_PLN          220.0
 
-// =========================================================
-// KONFIGURASI SCT-013 (DIMODIFIKASI UNTUK KALIBRASI)
-// =========================================================
 #define ADC_VREF             3.3
 #define ADC_RES              4095.0
 
-// === KALIBRASI SCT-013 ===
-// Jika pembacaan terlalu tinggi, turunkan CALIBRATION_FACTOR
-// Jika pembacaan terlalu rendah, naikkan CALIBRATION_FACTOR
-// DEFAULT: 80.0
-//#define CALIBRATION_FACTOR   60.0  // <-- SESUAIKAN NILAI INI
 #define CALIBRATION_FACTOR   78.0
-// Offset untuk koreksi (jika ada pembacaan offset)
-// DEFAULT: 0.0
-#define OFFSET_CORRECTION    0.03  // <-- SESUAIKAN NILAI INI
+#define OFFSET_CORRECTION    0.03
 
 #define RMS_SAMPLES          2000
 #define OVERSAMPLE           4
@@ -60,38 +38,26 @@ const char* MQTT_PASS   = "1234567800";
 #define DEADBAND_THRESHOLD   0.02
 #define AMPER_BAWAH          0.190
 
-// =========================================================
-// OLED CONFIG
-// =========================================================
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   64
 #define OLED_RESET      -1
 #define SCREEN_ADDRESS  0x3C
 
-// =========================================================
-// TIMER CONFIG
-// =========================================================
 const unsigned long INTERVAL_MQTT_SEND   = 2000;
 const unsigned long INTERVAL_OLED_UPDATE = 1000;
 const unsigned long INTERVAL_RECONNECT   = 5000;
 const unsigned long AMBANG_WAKTU_PINTU   = 300000; // 5 menit
 
-// =========================================================
-// OBJECT INIT
-// =========================================================
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 DHT dht(PIN_DHT, DHT_TYPE);
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
-// =========================================================
-// GLOBAL VARIABLE
-// =========================================================
 float suhu     = 0.0;
 float lembab   = 0.0;
 float arusRMS  = 0.0;
 float dayaWatt = 0.0;
-float arusRaw   = 0.0;  // Untuk debugging
+float arusRaw   = 0.0;
 
 bool statusPintu = false;
 bool alarmPintu  = false;
@@ -101,15 +67,11 @@ unsigned long lastOLEDUpdate       = 0;
 unsigned long lastReconnectAttempt = 0;
 unsigned long waktuPintuTerbuka    = 0;
 
-// Variabel untuk pembacaan arus
 uint16_t adcBuffer[RMS_SAMPLES];
 float rmsHistory[FILTER_SIZE];
 uint8_t filterIndex = 0;
 bool filterFull = false;
 
-// =========================================================
-// SETUP WIFI
-// =========================================================
 void setupWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
 
@@ -136,9 +98,6 @@ void setupWiFi() {
   }
 }
 
-// =========================================================
-// RECONNECT MQTT
-// =========================================================
 bool reconnectMQTT() {
   if (mqtt.connected()) return true;
 
@@ -158,9 +117,6 @@ bool reconnectMQTT() {
   return false;
 }
 
-// =========================================================
-// BACA SENSOR DHT22
-// =========================================================
 void bacaSensorDHT() {
   float suhuBaca   = dht.readTemperature();
   float lembabBaca = dht.readHumidity();
@@ -174,13 +130,8 @@ void bacaSensorDHT() {
   }
 }
 
-// =========================================================
-// BACA SENSOR ARUS SCT-013 (DENGAN KALIBRASI)
-// =========================================================
 void bacaSensorArus() {
-  //----------------------------------------
-  // PASS-1: Oversampling dan pengambilan sampel
-  //----------------------------------------
+
   uint32_t totalADC = 0;
 
   for (int i = 0; i < RMS_SAMPLES; i++) {
@@ -196,14 +147,8 @@ void bacaSensorArus() {
     delayMicroseconds(120);
   }
 
-  //----------------------------------------
-  // Hitung MIDPOINT (nilai tengah DC offset)
-  //----------------------------------------
   float midpoint = (float)totalADC / RMS_SAMPLES;
 
-  //----------------------------------------
-  // PASS-2: Hitung RMS
-  //----------------------------------------
   double sumSquare = 0;
 
   for (int i = 0; i < RMS_SAMPLES; i++) {
@@ -215,22 +160,14 @@ void bacaSensorArus() {
 
   float vrms = sqrt(sumSquare / RMS_SAMPLES);
   
-  // =========================================================
-  // APLIKASI KALIBRASI
-  // =========================================================
   float current = vrms * CALIBRATION_FACTOR;
   
-  // Terapkan offset correction
   if (current > 0) {
     current = current - OFFSET_CORRECTION;
   }
   
-  // Simpan nilai raw untuk debugging
   arusRaw = current;
 
-  //----------------------------------------
-  // Moving Average (filter untuk stabilitas)
-  //----------------------------------------
   rmsHistory[filterIndex] = current;
   filterIndex++;
 
@@ -248,17 +185,10 @@ void bacaSensorArus() {
 
   current = total / jumlah;
 
-  //----------------------------------------
-  // Deadband (hilangkan noise)
-  //----------------------------------------
   if (current < DEADBAND_THRESHOLD) {
     current = 0;
   }
 
-  // =========================================================
-  // CEK AMBANG BATAS ARUS
-  // Jika arus di bawah 0.190A, set ke 0
-  // =========================================================
   if (current < AMPER_BAWAH) {
     current = 0;
   }
@@ -266,9 +196,6 @@ void bacaSensorArus() {
   arusRMS = current;
   dayaWatt = arusRMS * VOLTAGE_PLN;
   
-  // =========================================================
-  // DEBUG: Tampilkan nilai di Serial Monitor
-  // =========================================================
   static unsigned long lastDebugPrint = 0;
   if (millis() - lastDebugPrint > 3000) {
     Serial.print("[DEBUG] Raw: ");
@@ -280,9 +207,6 @@ void bacaSensorArus() {
   }
 }
 
-// =========================================================
-// BACA STATUS PINTU DAN ALARM
-// =========================================================
 void handleSecurity() {
   statusPintu = (digitalRead(PIN_PINTU) == HIGH);
 
@@ -307,9 +231,6 @@ void handleSecurity() {
   }
 }
 
-// =========================================================
-// UPDATE OLED (DITAMBAHKAN ARUS RAW)
-// =========================================================
 void updateOLED() {
   if (millis() - lastOLEDUpdate < INTERVAL_OLED_UPDATE) return;
 
@@ -325,9 +246,6 @@ void updateOLED() {
   oled.printf("Lembab : %.0f %%\n", lembab);
   oled.printf("Arus   : %.2f A\n", arusRMS);
   oled.printf("Daya   : %.0f Watt\n", dayaWatt);
-  
-  // Tampilkan nilai raw untuk debugging (opsional)
-  // oled.printf("Raw    : %.3f A\n", arusRaw);
 
   if (alarmPintu) {
     oled.println(F("Pintu  : !ALARM!"));
@@ -340,9 +258,6 @@ void updateOLED() {
   lastOLEDUpdate = millis();
 }
 
-// =========================================================
-// PUBLISH MQTT
-// =========================================================
 void publishMQTT() {
   if (millis() - lastMqttSend < INTERVAL_MQTT_SEND) return;
 
@@ -377,9 +292,6 @@ void publishMQTT() {
   lastMqttSend = millis();
 }
 
-// =========================================================
-// SETUP
-// =========================================================
 void setup() {
   Serial.begin(115200);
   
@@ -425,9 +337,7 @@ void setup() {
   Serial.println(F("[INFO] Sesuaikan CALIBRATION_FACTOR & OFFSET_CORRECTION\n"));
 }
 
-// =========================================================
-// LOOP
-// =========================================================
+
 void loop() {
   unsigned long now = millis();
 

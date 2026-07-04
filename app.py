@@ -32,16 +32,8 @@ from mysql.connector import Error
 
 import paho.mqtt.client as mqtt
 
-
-# =========================================================
-# LOAD ENV
-# =========================================================
 load_dotenv()
 
-
-# =========================================================
-# FLASK APP
-# =========================================================
 app = Flask(__name__)
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
@@ -49,43 +41,23 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise ValueError("FLASK_SECRET_KEY belum diatur pada file .env")
 
-
-# =========================================================
-# APP CONFIG
-# =========================================================
 APP_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("FLASK_PORT", 5000))
 
-
-# =========================================================
-# DATABASE CONFIG
-# =========================================================
 DB_HOST = os.getenv("DB_HOST")
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 
-
-# =========================================================
-# MQTT CONFIG
-# =========================================================
 MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 MQTT_TOPIC = os.getenv("MQTT_TOPIC")
 
-
-# =========================================================
-# TELEGRAM CONFIG
-# =========================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-
-# =========================================================
-# BATAS SENSOR
-# =========================================================
 SUHU_ATAS = 35.0
 SUHU_KRITIS = 40.0
 SUHU_BAWAH = 18.0
@@ -94,20 +66,12 @@ LEMBAB_ATAS = 70.0
 LEMBAB_BAWAH = 30.0
 
 WATT_ATAS = 3500.0
-AMPER_BAWAH = 0.190  # Ambang batas deteksi listrik utama padam
+AMPER_BAWAH = 0.190  # Ambang batas deteksi listrik utama
 
-
-# =========================================================
-# DURASI DETEKSI
-# =========================================================
 DURASI_MAKS_PINTU = 300          # 5 menit
 DURASI_MAKS_ARUS_MATI = 300      # 5 menit (waktu tunggu sebelum shutdown)
 DURASI_MAKS_OVERHEAT = 300       # 5 menit
 
-
-# =========================================================
-# STATUS DATABASE
-# =========================================================
 STATUS_AMAN = 0
 STATUS_WARNING = 1
 STATUS_BAHAYA = 2
@@ -118,10 +82,6 @@ PINTU_TERBUKA = 1
 POWER_OFF = 0
 POWER_ON = 1
 
-
-# =========================================================
-# ALERT STATE
-# =========================================================
 class AlertState:
     # Suhu
     suhu_tinggi = False
@@ -130,23 +90,18 @@ class AlertState:
     waktu_overheat = 0
     shutdown_overheat_sent = False
     
-    # Kelembapan
     lembab_tinggi = False
     lembab_rendah = False
     
-    # Listrik
     daya_overload = False
     
-    # Status Listrik Utama
-    listrik_mati = False           # True = listrik utama padam (arus < 0.190A)
-    waktu_listrik_mati = 0         # Waktu mulai listrik padam
-    shutdown_listrik_sent = False  # Flag shutdown sudah dikirim
+    listrik_mati = False
+    waktu_listrik_mati = 0
+    shutdown_listrik_sent = False
     
-    # Status Server (kondisi aktual server)
-    server_hidup = False           # True = server dalam keadaan hidup/nyala
-    server_pernah_hidup = False    # Untuk tracking pertama kali server hidup
+    server_hidup = False
+    server_pernah_hidup = False
     
-    # Pintu
     pintu_terbuka = False
     waktu_buka_pintu = 0
     alarm_pintu_sent = False
@@ -154,10 +109,6 @@ class AlertState:
 
 alert_state = AlertState()
 
-
-# =========================================================
-# DATABASE CONNECTION
-# =========================================================
 def get_db_connection():
     try:
         conn = mysql.connector.connect(
@@ -172,20 +123,12 @@ def get_db_connection():
         print(f"[DATABASE] Error -> {e}")
         return None
 
-
-# =========================================================
-# SAFE FLOAT
-# =========================================================
 def safe_float(value, default=0.0):
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
 
-
-# =========================================================
-# TELEGRAM
-# =========================================================
 def send_telegram_msg(message, is_urgent=False):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
@@ -215,10 +158,6 @@ def send_telegram_msg(message, is_urgent=False):
     except Exception as e:
         print(f"[TELEGRAM] Error -> {e}")
 
-
-# =========================================================
-# EVENT LOGGER
-# =========================================================
 def log_event(event_type, deskripsi, status):
     conn = get_db_connection()
 
@@ -250,7 +189,6 @@ def log_event(event_type, deskripsi, status):
 
         conn.commit()
 
-        # Log ke console juga
         status_text = ["AMAN", "WARNING", "BAHAYA"][status] if status in [0,1,2] else "UNKNOWN"
         print(f"[EVENT] {event_type} | {status_text} | {deskripsi}")
 
@@ -264,10 +202,6 @@ def log_event(event_type, deskripsi, status):
         except Exception:
             pass
 
-
-# =========================================================
-# SIMPAN MONITORING LOG
-# =========================================================
 def save_monitoring_log(suhu, lembab, amper, watt, pintu):
     conn = get_db_connection()
 
@@ -324,14 +258,9 @@ def save_monitoring_log(suhu, lembab, amper, watt, pintu):
         except Exception:
             pass
 
-
-# =========================================================
-# SHUTDOWN SYSTEM (DIPERBAIKI - LANGSUNG MATI)
-# =========================================================
 def shutdown_system(reason):
     print(f"[SYSTEM] Shutdown dipanggil. Alasan: {reason}")
 
-    # Kirim notifikasi shutdown
     msg_shutdown = (
         f"⚠️ SYSTEM SHUTDOWN ⚠️\n"
         f"Alasan: {reason}\n"
@@ -340,43 +269,28 @@ def shutdown_system(reason):
     send_telegram_msg(msg_shutdown, is_urgent=True)
     log_event("SYSTEM_SHUTDOWN", msg_shutdown, STATUS_BAHAYA)
 
-    # Update status server menjadi mati
     alert_state.server_hidup = False
 
-    # Set flag agar tidak dipanggil lagi
     if reason.startswith("Listrik utama padam"):
         alert_state.shutdown_listrik_sent = True
     elif reason.startswith("Overheat kritis"):
         alert_state.shutdown_overheat_sent = True
 
-    # Eksekusi shutdown LANGSUNG (tanpa delay 10 detik)
     if os.name == "nt":
-        os.system("shutdown /s /t 0")  # Langsung mati
+        os.system("shutdown /s /t 0")
     else:
-        os.system("sudo shutdown -h now")  # Langsung mati
+        os.system("sudo shutdown -h now")
 
-
-# =========================================================
-# LOGIN MANAGER
-# =========================================================
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-
-# =========================================================
-# USER MODEL
-# =========================================================
 class User(UserMixin):
     def __init__(self, id, nama, email):
         self.id = id
         self.nama = nama
         self.email = email
 
-
-# =========================================================
-# LOAD USER
-# =========================================================
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
@@ -413,12 +327,7 @@ def load_user(user_id):
 
     return None
 
-
-# =========================================================
-# HANDLE SUHU
-# =========================================================
 def handle_suhu(suhu):
-    # SUHU TINGGI
     if suhu > SUHU_ATAS and not alert_state.suhu_tinggi:
         msg_text = (
             f"⚠️ PERINGATAN SUHU TINGGI\n"
@@ -442,7 +351,6 @@ def handle_suhu(suhu):
         alert_state.waktu_overheat = 0
         alert_state.shutdown_overheat_sent = False
 
-    # SUHU KRITIS
     if suhu >= SUHU_KRITIS:
         if not alert_state.overheat_kritis:
             msg_text = (
@@ -468,7 +376,6 @@ def handle_suhu(suhu):
             ):
                 shutdown_system("Overheat kritis - Suhu melewati batas selama 5 menit")
 
-    # SUHU RENDAH
     if suhu < SUHU_BAWAH and not alert_state.suhu_rendah:
         msg_text = (
             f"❄️ PERINGATAN SUHU RENDAH\n"
@@ -489,12 +396,7 @@ def handle_suhu(suhu):
 
         alert_state.suhu_rendah = False
 
-
-# =========================================================
-# HANDLE KELEMBAPAN
-# =========================================================
 def handle_kelembapan(lembab):
-    # KELEMBAPAN TINGGI
     if lembab > LEMBAB_ATAS and not alert_state.lembab_tinggi:
         msg_text = (
             f"💧 KELEMBAPAN TINGGI\n"
@@ -515,7 +417,6 @@ def handle_kelembapan(lembab):
 
         alert_state.lembab_tinggi = False
 
-    # KELEMBAPAN RENDAH
     if lembab < LEMBAB_BAWAH and not alert_state.lembab_rendah:
         msg_text = (
             f"🏜️ KELEMBAPAN RENDAH\n"
@@ -536,20 +437,11 @@ def handle_kelembapan(lembab):
 
         alert_state.lembab_rendah = False
 
-
-# =========================================================
-# HANDLE LISTRIK (DIPERBAIKI)
-# =========================================================
 def handle_listrik(amper, watt):
     current_time = time.time()
     
-    # =========================================================
-    # LISTRIK UTAMA PADAM (arus < 0.190A)
-    # =========================================================
     if amper < AMPER_BAWAH:
-        # Listrik utama padam
         if not alert_state.listrik_mati:
-            # Catat event listrik padam
             msg_text = (
                 f"⚠️ LISTRIK UTAMA PADAM ⚠️\n"
                 f"Arus terdeteksi: {amper:.2f} A\n"
@@ -564,10 +456,8 @@ def handle_listrik(amper, watt):
             alert_state.shutdown_listrik_sent = False
 
         else:
-            # Listrik masih padam, cek durasi untuk shutdown
             durasi_mati = current_time - alert_state.waktu_listrik_mati
 
-            # Shutdown jika sudah melewati batas waktu (5 menit)
             if (
                 durasi_mati >= DURASI_MAKS_ARUS_MATI
                 and
@@ -575,11 +465,7 @@ def handle_listrik(amper, watt):
             ):
                 shutdown_system("Listrik utama padam selama 5 menit")
 
-    # =========================================================
-    # LISTRIK UTAMA KEMBALI (arus >= 0.190A)
-    # =========================================================
     else:
-        # Listrik kembali normal
         if alert_state.listrik_mati:
             msg_text = (
                 f"✅ LISTRIK KEMBALI NORMAL ✅\n"
@@ -594,11 +480,7 @@ def handle_listrik(amper, watt):
             alert_state.waktu_listrik_mati = 0
             alert_state.shutdown_listrik_sent = False
 
-        # =========================================================
-        # DETEKSI SERVER HIDUP (Baru dinyalakan atau menyala kembali)
-        # =========================================================
         if not alert_state.server_hidup:
-            # Server baru hidup (pertama kali atau setelah shutdown)
             msg_text = (
                 f"✅ SERVER HIDUP ✅\n"
                 f"Arus terdeteksi: {amper:.2f} A\n"
@@ -611,9 +493,6 @@ def handle_listrik(amper, watt):
             alert_state.server_hidup = True
             alert_state.server_pernah_hidup = True
 
-        # =========================================================
-        # DETEKSI DAYA OVERLOAD
-        # =========================================================
         if watt > WATT_ATAS:
             if not alert_state.daya_overload:
                 msg_text = (
@@ -628,7 +507,6 @@ def handle_listrik(amper, watt):
 
                 alert_state.daya_overload = True
 
-        # DAYA NORMAL
         else:
             if alert_state.daya_overload:
                 msg_text = (
@@ -642,10 +520,6 @@ def handle_listrik(amper, watt):
 
                 alert_state.daya_overload = False
 
-
-# =========================================================
-# HANDLE PINTU
-# =========================================================
 def handle_pintu(pintu, alarm_pintu_esp=False):
     is_pintu_terbuka = pintu == "terbuka"
 
@@ -670,7 +544,6 @@ def handle_pintu(pintu, alarm_pintu_esp=False):
             alert_state.waktu_buka_pintu = 0
             alert_state.alarm_pintu_sent = False
 
-    # Alarm pintu jika terbuka > 5 menit
     if alert_state.pintu_terbuka:
         durasi_pintu = time.time() - alert_state.waktu_buka_pintu
 
@@ -690,10 +563,6 @@ def handle_pintu(pintu, alarm_pintu_esp=False):
 
                 alert_state.alarm_pintu_sent = True
 
-
-# =========================================================
-# MQTT CONNECT
-# =========================================================
 def on_mqtt_connect(client, userdata, flags, reason_code, properties=None):
     if reason_code == 0 or str(reason_code).lower() == "success":
         print(f"[MQTT] Connected -> {MQTT_BROKER}:{MQTT_PORT}")
@@ -705,10 +574,6 @@ def on_mqtt_connect(client, userdata, flags, reason_code, properties=None):
     else:
         print(f"[MQTT] Failed Connect -> {reason_code}")
 
-
-# =========================================================
-# MQTT DISCONNECT
-# =========================================================
 def on_mqtt_disconnect(
     client,
     userdata,
@@ -718,10 +583,6 @@ def on_mqtt_disconnect(
 ):
     print(f"[MQTT] Disconnected -> {reason_code}")
 
-
-# =========================================================
-# MQTT MESSAGE
-# =========================================================
 def on_mqtt_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload.decode("utf-8"))
@@ -764,10 +625,6 @@ def on_mqtt_message(client, userdata, msg):
     except Exception as e:
         print(f"[ERROR MQTT MESSAGE] {e}")
 
-
-# =========================================================
-# MQTT WORKER
-# =========================================================
 def mqtt_worker():
     client_id = f"Flask_Monitor_{uuid.uuid4().hex[:8]}"
 
@@ -813,10 +670,6 @@ def mqtt_worker():
         client.loop_stop()
         print("[MQTT] Worker Stopped")
 
-
-# =========================================================
-# START MQTT THREAD
-# =========================================================
 def start_mqtt_thread():
     mqtt_thread = threading.Thread(
         target=mqtt_worker,
@@ -828,10 +681,6 @@ def start_mqtt_thread():
 
 start_mqtt_thread()
 
-
-# =========================================================
-# LOGIN
-# =========================================================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -890,10 +739,6 @@ def login():
 
     return render_template("login.html")
 
-
-# =========================================================
-# LOGOUT
-# =========================================================
 @app.route("/logout")
 @login_required
 def logout():
@@ -901,19 +746,11 @@ def logout():
 
     return redirect(url_for("login"))
 
-
-# =========================================================
-# DASHBOARD
-# =========================================================
 @app.route("/")
 @login_required
 def index():
     return render_template("index.html")
 
-
-# =========================================================
-# LOGS
-# =========================================================
 @app.route("/logs")
 @login_required
 def logs():
@@ -949,10 +786,6 @@ def logs():
         logs=logs_data
     )
 
-
-# =========================================================
-# EVENTS
-# =========================================================
 @app.route("/events")
 @login_required
 def events():
@@ -988,10 +821,6 @@ def events():
         events=events_data
     )
 
-
-# =========================================================
-# API LATEST
-# =========================================================
 @app.route("/api/latest")
 @login_required
 def api_latest():
@@ -1030,10 +859,6 @@ def api_latest():
 
     return jsonify({})
 
-
-# =========================================================
-# API CHART
-# =========================================================
 @app.route("/api/chart")
 @login_required
 def api_chart():
@@ -1090,10 +915,6 @@ def api_chart():
 
     return jsonify({})
 
-
-# =========================================================
-# MAIN
-# =========================================================
 if __name__ == "__main__":
     print(f"[FLASK] Running {APP_HOST}:{APP_PORT}")
 
