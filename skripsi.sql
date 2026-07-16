@@ -57,6 +57,29 @@ CREATE TABLE `event_logs` (
 DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE `app_settings` (
+  `setting_key` VARCHAR(50) NOT NULL,
+  `setting_value` VARCHAR(50) NOT NULL,
+  `description` VARCHAR(255) DEFAULT NULL,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `app_settings` (`setting_key`, `setting_value`, `description`) VALUES
+('suhu_atas', '35.0', 'Batas atas suhu normal (°C)'),
+('suhu_kritis', '40.0', 'Suhu kritis untuk shutdown (°C)'),
+('suhu_bawah', '18.0', 'Batas bawah suhu normal (°C)'),
+('lembab_atas', '70.0', 'Batas atas kelembapan normal (%)'),
+('lembab_bawah', '30.0', 'Batas bawah kelembapan normal (%)'),
+('watt_atas', '3500.0', 'Batas daya maksimum (Watt)'),
+('amper_bawah', '0.190', 'Ambang batas arus untuk deteksi listrik mati (A)'),
+('durasi_maks_pintu', '300', 'Durasi maksimum pintu terbuka sebelum alarm (detik)'),
+('durasi_maks_arus_mati', '300', 'Durasi listrik padam sebelum shutdown (detik)'),
+('durasi_maks_overheat', '300', 'Durasi overheat sebelum shutdown (detik)');
+
 INSERT INTO `users`
 (
   `nama`,

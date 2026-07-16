@@ -1,0 +1,189 @@
+{% extends "base.html" %} {% block title %}Pengaturan Sistem{% endblock %} {%
+block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-0">⚙️ Pengaturan Sistem</h3>
+    <p class="text-secondary mb-0">Ubah ambang batas sensor dan durasi waktu</p>
+  </div>
+</div>
+
+<div class="glass-card p-4">
+  <form method="POST">
+    <div class="row">
+      <div class="col-md-6">
+        <h5 class="border-bottom pb-2 mb-3">🌡️ Suhu</h5>
+        <div class="mb-3">
+          <label for="suhu_atas" class="form-label">Batas Suhu Atas (°C)</label>
+          <input
+            type="number"
+            step="0.1"
+            class="form-control"
+            id="suhu_atas"
+            name="suhu_atas"
+            value="{{ settings.suhu_atas }}"
+            required
+          />
+          <div class="form-text">Peringatan jika suhu melewati nilai ini.</div>
+        </div>
+        <div class="mb-3">
+          <label for="suhu_kritis" class="form-label">Suhu Kritis (°C)</label>
+          <input
+            type="number"
+            step="0.1"
+            class="form-control"
+            id="suhu_kritis"
+            name="suhu_kritis"
+            value="{{ settings.suhu_kritis }}"
+            required
+          />
+          <div class="form-text">
+            Shutdown otomatis jika suhu melewati batas ini selama durasi
+            tertentu.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="suhu_bawah" class="form-label"
+            >Batas Suhu Bawah (°C)</label
+          >
+          <input
+            type="number"
+            step="0.1"
+            class="form-control"
+            id="suhu_bawah"
+            name="suhu_bawah"
+            value="{{ settings.suhu_bawah }}"
+            required
+          />
+          <div class="form-text">Peringatan jika suhu di bawah nilai ini.</div>
+        </div>
+
+        <h5 class="border-bottom pb-2 mb-3 mt-4">💧 Kelembapan</h5>
+        <div class="mb-3">
+          <label for="lembab_atas" class="form-label"
+            >Kelembapan Atas (%)</label
+          >
+          <input
+            type="number"
+            step="0.1"
+            class="form-control"
+            id="lembab_atas"
+            name="lembab_atas"
+            value="{{ settings.lembab_atas }}"
+            required
+          />
+          <div class="form-text">
+            Peringatan jika kelembapan melewati nilai ini.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="lembab_bawah" class="form-label"
+            >Kelembapan Bawah (%)</label
+          >
+          <input
+            type="number"
+            step="0.1"
+            class="form-control"
+            id="lembab_bawah"
+            name="lembab_bawah"
+            value="{{ settings.lembab_bawah }}"
+            required
+          />
+          <div class="form-text">
+            Peringatan jika kelembapan di bawah nilai ini.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <h5 class="border-bottom pb-2 mb-3">⚡ Listrik</h5>
+        <div class="mb-3">
+          <label for="watt_atas" class="form-label">Daya Maksimum (Watt)</label>
+          <input
+            type="number"
+            step="0.1"
+            class="form-control"
+            id="watt_atas"
+            name="watt_atas"
+            value="{{ settings.watt_atas }}"
+            required
+          />
+          <div class="form-text">Peringatan jika daya melebihi nilai ini.</div>
+        </div>
+        <div class="mb-3">
+          <label for="amper_bawah" class="form-label"
+            >Arus Minimum (A) – deteksi listrik mati</label
+          >
+          <input
+            type="number"
+            step="0.001"
+            class="form-control"
+            id="amper_bawah"
+            name="amper_bawah"
+            value="{{ settings.amper_bawah }}"
+            required
+          />
+          <div class="form-text">
+            Jika arus di bawah nilai ini, dianggap listrik utama padam.
+          </div>
+        </div>
+
+        <h5 class="border-bottom pb-2 mb-3 mt-4">⏱️ Durasi (detik)</h5>
+        <div class="mb-3">
+          <label for="durasi_maks_pintu" class="form-label"
+            >Pintu Terbuka Maksimal</label
+          >
+          <input
+            type="number"
+            class="form-control"
+            id="durasi_maks_pintu"
+            name="durasi_maks_pintu"
+            value="{{ settings.durasi_maks_pintu }}"
+            required
+          />
+          <div class="form-text">
+            Setelah durasi ini, alarm pintu akan aktif.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="durasi_maks_arus_mati" class="form-label"
+            >Listrik Padam Sebelum Shutdown</label
+          >
+          <input
+            type="number"
+            class="form-control"
+            id="durasi_maks_arus_mati"
+            name="durasi_maks_arus_mati"
+            value="{{ settings.durasi_maks_arus_mati }}"
+            required
+          />
+          <div class="form-text">
+            Jika listrik padam melebihi durasi ini, server akan shutdown.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="durasi_maks_overheat" class="form-label"
+            >Overheat Sebelum Shutdown</label
+          >
+          <input
+            type="number"
+            class="form-control"
+            id="durasi_maks_overheat"
+            name="durasi_maks_overheat"
+            value="{{ settings.durasi_maks_overheat }}"
+            required
+          />
+          <div class="form-text">
+            Jika suhu kritis bertahan selama durasi ini, server akan shutdown.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-save"></i> Simpan Pengaturan
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
