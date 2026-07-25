@@ -1,0 +1,95 @@
+Panduan Instalasi Proyek Skripsi (Flask + MQTT + MySQL)
+
+1. Persyaratan Sistem
+- Python 3.11 atau terbaru
+- MySQL / MariaDB
+- Arduino IDE (untuk ESP32)
+- Laragon atau XAMPP jika menggunakan phpMyAdmin
+- Internet untuk mengunduh paket Python
+
+2. Siapkan Virtual Environment Python
+Buka terminal di folder proyek:
+
+d:\laragon\www\skripsi
+
+Jalankan:
+
+python -m venv venv
+
+Aktifkan virtual environment (Windows):
+
+venv\Scripts\activate
+
+3. Instal Dependensi Python
+Setelah virtual environment aktif, jalankan:
+
+pip install -r requirements.txt
+
+4. Konfigurasi Database
+Buka phpMyAdmin atau MySQL client.
+
+Buat database baru dengan nama:
+
+skripsi
+
+Import file SQL:
+
+skripsi.sql
+
+File ini sudah berisi struktur tabel dan pengaturan awal.
+
+5. Siapkan File .env
+Di folder proyek, buat salinan dari .env.example:
+
+copy .env.example .env
+
+Lalu buka file .env dan sesuaikan nilai berikut:
+
+FLASK_SECRET_KEY=kode_rahasia  # ganti dengan nilai acak yang aman
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=    # isi jika MySQL Anda ada password
+DB_NAME=skripsi
+
+MQTT_BROKER=localhost
+MQTT_PORT=1883
+MQTT_USERNAME=
+MQTT_PASSWORD=
+MQTT_TOPIC=220511203/monitoring/server/data
+
+TELEGRAM_BOT_TOKEN=     # opsional jika tidak pakai Telegram
+TELEGRAM_CHAT_ID=       # opsional jika tidak pakai Telegram
+
+6. Jalankan Aplikasi Flask
+Pastikan virtual environment aktif.
+
+python app.py
+
+Jika berhasil, aplikasi akan berjalan di:
+
+http://127.0.0.1:5000
+
+7. Login Aplikasi
+Buka browser dan akses:
+
+http://127.0.0.1:5000/login
+
+Gunakan akun bawaan dari database `skripsi.sql`.
+
+8. Menyiapkan ESP32 (Opsional)
+Buka file `ESP32.ino` di Arduino IDE.
+
+Sesuaikan:
+- SSID WiFi
+- PASSWORD WiFi
+- IP Address server (IP komputer yang menjalankan Flask)
+- Topik MQTT jika perlu
+
+Upload kode ke ESP32 setelah semua konfigurasi selesai.
+
+9. Catatan Tambahan
+- Jika database gagal terhubung, cek ulang `DB_HOST`, `DB_USER`, `DB_PASS`, dan `DB_NAME`.
+- Jika MQTT tidak terhubung, pastikan broker MQTT berjalan dan `MQTT_TOPIC` sama di ESP32 dan aplikasi.
+- Untuk menjalankan di luar development, matikan debug atau gunakan server WSGI yang sesuai.
+
+Selamat! Proyek seharusnya kini siap dijalankan.
