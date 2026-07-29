@@ -99,12 +99,14 @@ def load_settings():
             pass
 
 def get_setting(key, default=None):
+    """Ambil nilai setting (dengan cache). Jika tidak ada, gunakan default."""
     global _settings_cache, _settings_cache_time
     if time.time() - _settings_cache_time > CACHE_TTL:
         load_settings()
     return _settings_cache.get(key, default)
 
 def update_setting(key, value):
+    """Update satu setting di database dan langsung perbarui cache."""
     conn = get_db_connection()
     if not conn:
         return False
@@ -135,7 +137,7 @@ def safe_float(value, default=0.0):
         return default
 
 def format_durasi_teks(detik_val):
-    """Konversi durasi dalam detik ke format teks ramah baca."""
+    """Konversi durasi dalam detik ke teks ramah baca (menit/detik)."""
     menit = int(detik_val // 60)
     sisa_detik = int(detik_val % 60)
     if menit > 0 and sisa_detik > 0:
@@ -232,9 +234,9 @@ def shutdown_system(reason):
 
     alert_state.server_hidup = False
 
-    if "Listrik utama" in reason:
+    if reason.startswith("Listrik utama padam"):
         alert_state.shutdown_listrik_sent = True
-    elif "Overheat" in reason:
+    elif reason.startswith("Overheat kritis"):
         alert_state.shutdown_overheat_sent = True
 
     if os.name == "nt":
@@ -282,7 +284,7 @@ def handle_suhu(suhu):
     SUHU_KRITIS = safe_float(get_setting('suhu_kritis', '40.0'), 40.0)
     SUHU_BAWAH = safe_float(get_setting('suhu_bawah', '18.0'), 18.0)
     DURASI_MAKS_OVERHEAT = safe_float(get_setting('durasi_maks_overheat', '300'), 300)
-
+    
     durasi_overheat_teks = format_durasi_teks(DURASI_MAKS_OVERHEAT)
 
     if suhu > SUHU_ATAS and not alert_state.suhu_tinggi:
