@@ -49,7 +49,7 @@ DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 
-MQTT_BROKER = os.getenv("MQTT_BROKER")
+MQTT_BROKER = os.getenv("MQTT_BROKER", "127.0.0.1")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
@@ -135,6 +135,17 @@ def safe_float(value, default=0.0):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+def format_durasi_teks(detik_val):
+    """Konversi durasi dalam detik ke teks ramah baca (menit/detik)."""
+    menit = int(detik_val // 60)
+    sisa_detik = int(detik_val % 60)
+    if menit > 0 and sisa_detik > 0:
+        return f"{menit} menit {sisa_detik} detik"
+    elif menit > 0:
+        return f"{menit} menit"
+    else:
+        return f"{int(detik_val)} detik"
 
 def send_telegram_msg(message, is_urgent=False):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -273,6 +284,8 @@ def handle_suhu(suhu):
     SUHU_KRITIS = safe_float(get_setting('suhu_kritis', '40.0'), 40.0)
     SUHU_BAWAH = safe_float(get_setting('suhu_bawah', '18.0'), 18.0)
     DURASI_MAKS_OVERHEAT = safe_float(get_setting('durasi_maks_overheat', '300'), 300)
+    
+    durasi_overheat_teks = format_durasi_teks(DURASI_MAKS_OVERHEAT)
 
     if suhu > SUHU_ATAS and not alert_state.suhu_tinggi:
         msg_text = (
@@ -297,7 +310,7 @@ def handle_suhu(suhu):
             msg_text = (
                 f"🔥 SUHU KRITIS 🔥\n"
                 f"Suhu ruang server mencapai {suhu:.1f} °C\n"
-                f"Shutdown otomatis dalam {DURASI_MAKS_OVERHEAT//60} menit."
+                f"Shutdown otomatis dalam {durasi_overheat_teks}."
             )
             send_telegram_msg(msg_text, is_urgent=True)
             log_event("SUHU_KRITIS", f"Suhu kritis: {suhu:.1f}°C", STATUS_BAHAYA)
@@ -307,7 +320,7 @@ def handle_suhu(suhu):
         else:
             durasi_overheat = time.time() - alert_state.waktu_overheat
             if durasi_overheat >= DURASI_MAKS_OVERHEAT and not alert_state.shutdown_overheat_sent:
-                shutdown_system("Overheat kritis - Suhu melewati batas selama 5 menit")
+                shutdown_system(f"Overheat kritis - Suhu melewati batas selama {durasi_overheat_teks}")
 
     if suhu < SUHU_BAWAH and not alert_state.suhu_rendah:
         msg_text = (
@@ -363,6 +376,7 @@ def handle_listrik(amper, watt):
     WATT_ATAS = safe_float(get_setting('watt_atas', '3500.0'), 3500.0)
     DURASI_MAKS_ARUS_MATI = safe_float(get_setting('durasi_maks_arus_mati', '300'), 300)
 
+    durasi_listrik_teks = format_durasi_teks(DURASI_MAKS_ARUS_MATI)
     current_time = time.time()
     
     if amper < AMPER_BAWAH:
@@ -370,7 +384,7 @@ def handle_listrik(amper, watt):
             msg_text = (
                 f"⚠️ LISTRIK UTAMA PADAM ⚠️\n"
                 f"Arus terdeteksi: {amper:.2f} A\n"
-                f"Server akan shutdown otomatis dalam {DURASI_MAKS_ARUS_MATI//60} menit."
+                f"Server akan shutdown otomatis dalam {durasi_listrik_teks}."
             )
             send_telegram_msg(msg_text, is_urgent=True)
             log_event("LISTRIK_PADAM", f"Listrik utama padam - Arus: {amper:.2f}A", STATUS_BAHAYA)
@@ -380,7 +394,7 @@ def handle_listrik(amper, watt):
         else:
             durasi_mati = current_time - alert_state.waktu_listrik_mati
             if durasi_mati >= DURASI_MAKS_ARUS_MATI and not alert_state.shutdown_listrik_sent:
-                shutdown_system("Listrik utama padam selama 5 menit")
+                shutdown_system(f"Listrik utama padam selama {durasi_listrik_teks}")
     else:
         if alert_state.listrik_mati:
             msg_text = (
@@ -429,6 +443,7 @@ def handle_listrik(amper, watt):
 
 def handle_pintu(pintu, alarm_pintu_esp=False):
     DURASI_MAKS_PINTU = safe_float(get_setting('durasi_maks_pintu', '300'), 300)
+    durasi_pintu_teks = format_durasi_teks(DURASI_MAKS_PINTU)
 
     is_pintu_terbuka = pintu == "terbuka"
 
@@ -453,10 +468,10 @@ def handle_pintu(pintu, alarm_pintu_esp=False):
             if not alert_state.alarm_pintu_sent:
                 msg_pintu_lama = (
                     "🔴 PERINGATAN KEAMANAN 🔴\n"
-                    "Pintu ruang server terbuka lebih dari 5 menit!"
+                    f"Pintu ruang server terbuka lebih dari {durasi_pintu_teks}!"
                 )
                 send_telegram_msg(msg_pintu_lama, is_urgent=True)
-                log_event("PINTU_ALARM", "Pintu terbuka > 5 menit - ALARM!", STATUS_BAHAYA)
+                log_event("PINTU_ALARM", f"Pintu terbuka > {durasi_pintu_teks} - ALARM!", STATUS_BAHAYA)
                 alert_state.alarm_pintu_sent = True
 
 def on_mqtt_connect(client, userdata, flags, reason_code, properties=None):
@@ -518,14 +533,12 @@ def mqtt_worker():
     client.reconnect_delay_set(min_delay=1, max_delay=120)
 
     try:
-        client.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=30)
-        client.loop_start()
-        while True:
-            time.sleep(1)
+        client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
+        print(f"[MQTT] Attempting connection to {MQTT_BROKER}:{MQTT_PORT}...")
+        client.loop_forever()
     except Exception as e:
         print(f"[MQTT] Fatal Error -> {e}")
     finally:
-        client.loop_stop()
         print("[MQTT] Worker Stopped")
 
 def start_mqtt_thread():
@@ -704,7 +717,15 @@ def api_latest():
                 conn.close()
             except Exception:
                 pass
-    return jsonify({})
+    return jsonify({
+        "suhu": 0,
+        "kelembapan": 0,
+        "arus_listrik": 0,
+        "daya_watt": 0,
+        "status_pintu": 0,
+        "power_status": 0,
+        "created_at": "-"
+    })
 
 @app.route("/api/chart")
 @login_required
@@ -740,7 +761,7 @@ def api_chart():
                 conn.close()
             except Exception:
                 pass
-    return jsonify({})
+    return jsonify({"labels": [], "suhu": [], "watt": [], "amper": []})
 
 if __name__ == "__main__":
     print(f"[FLASK] Running {APP_HOST}:{APP_PORT}")
