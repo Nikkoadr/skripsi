@@ -6,7 +6,7 @@ import requests
 import uuid
 
 from dotenv import load_dotenv
-from werkzeug.security import check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from flask import (
     Flask,
@@ -32,16 +32,8 @@ from mysql.connector import Error
 
 import paho.mqtt.client as mqtt
 
-
-# =========================================================
-# LOAD ENV
-# =========================================================
 load_dotenv()
 
-
-# =========================================================
-# FLASK APP
-# =========================================================
 app = Flask(__name__)
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
@@ -49,65 +41,207 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise ValueError("FLASK_SECRET_KEY belum diatur pada file .env")
 
-
-# =========================================================
-# APP CONFIG
-# =========================================================
 APP_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("FLASK_PORT", 5000))
 
-
-# =========================================================
-# DATABASE CONFIG
-# =========================================================
 DB_HOST = os.getenv("DB_HOST")
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 
-
-# =========================================================
-# MQTT CONFIG
-# =========================================================
-MQTT_BROKER = os.getenv("MQTT_BROKER")
+MQTT_BROKER = os.getenv("MQTT_BROKER", "127.0.0.1")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 MQTT_TOPIC = os.getenv("MQTT_TOPIC")
 
-
-# =========================================================
-# TELEGRAM CONFIG
-# =========================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+_settings_cache = {}
+_settings_cache_time = 0
+CACHE_TTL = 60
 
-# =========================================================
-# BATAS SENSOR
-# =========================================================
-SUHU_ATAS = 35.0
-SUHU_KRITIS = 40.0
-SUHU_BAWAH = 18.0
+def get_db_connection():
+    try:
+        conn = mysql.connector.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASS,
+            database=DB_NAME
+        )
+        return conn
+    except Error as e:
+        print(f"[DATABASE] Error -> {e}")
+        return None
 
-LEMBAB_ATAS = 70.0
-LEMBAB_BAWAH = 30.0
+def load_settings():
+    """Muat seluruh pengaturan dari database ke cache."""
+    global _settings_cache, _settings_cache_time
+    conn = get_db_connection()
+    if not conn:
+        return
 
-WATT_ATAS = 3500.0
-AMPER_BAWAH = 0.4
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT setting_key, setting_value FROM app_settings")
+        rows = cursor.fetchall()
+        _settings_cache = {row['setting_key']: row['setting_value'] for row in rows}
+        _settings_cache_time = time.time()
+        print("[SETTINGS] Loaded into cache.")
+    except Exception as e:
+        print(f"[SETTINGS] Load error: {e}")
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
 
+def get_setting(key, default=None):
+    global _settings_cache, _settings_cache_time
+    if time.time() - _settings_cache_time > CACHE_TTL:
+        load_settings()
+    return _settings_cache.get(key, default)
 
-# =========================================================
-# DURASI DETEKSI
-# =========================================================
-DURASI_MAKS_PINTU = 300
-DURASI_MAKS_ARUS_MATI = 300
-DURASI_MAKS_OVERHEAT = 300
+def update_setting(key, value):
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO app_settings (setting_key, setting_value)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+        """, (key, value))
+        conn.commit()
+        _settings_cache[key] = value
+        return True
+    except Exception as e:
+        print(f"[SETTINGS] Update error: {e}")
+        return False
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
 
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
-# =========================================================
-# STATUS DATABASE
-# =========================================================
+def format_durasi_teks(detik_val):
+    """Konversi durasi dalam detik ke format teks ramah baca."""
+    menit = int(detik_val // 60)
+    sisa_detik = int(detik_val % 60)
+    if menit > 0 and sisa_detik > 0:
+        return f"{menit} menit {sisa_detik} detik"
+    elif menit > 0:
+        return f"{menit} menit"
+    else:
+        return f"{int(detik_val)} detik"
+
+def send_telegram_msg(message, is_urgent=False):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+    if is_urgent:
+        prefix = "🚨 DARURAT 🚨\n\n"
+    else:
+        prefix = "📊 Monitoring Ruang Server\n\n"
+
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": f"{prefix}{message}"
+    }
+
+    try:
+        response = requests.post(url, json=payload, timeout=5)
+        if response.status_code != 200:
+            print(f"[TELEGRAM] Failed -> {response.text}")
+    except Exception as e:
+        print(f"[TELEGRAM] Error -> {e}")
+
+def log_event(event_type, deskripsi, status):
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO event_logs (event_type, deskripsi, status)
+            VALUES (%s, %s, %s)
+        """
+        cursor.execute(query, (event_type, deskripsi, status))
+        conn.commit()
+        status_text = ["AMAN", "WARNING", "BAHAYA"][status] if status in [0,1,2] else "UNKNOWN"
+        print(f"[EVENT] {event_type} | {status_text} | {deskripsi}")
+    except Exception as e:
+        print(f"[EVENT] Error -> {e}")
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+def save_monitoring_log(suhu, lembab, amper, watt, pintu):
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO monitoring_logs
+            (suhu, kelembapan, arus_listrik, daya_watt, status_pintu, power_status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        status_pintu_db = 1 if pintu == "terbuka" else 0
+        amper_bawah_str = get_setting('amper_bawah', '0.190')
+        AMPER_BAWAH = safe_float(amper_bawah_str, 0.190)
+        power_status_db = 0 if amper < AMPER_BAWAH else 1
+
+        values = (suhu, lembab, amper, round(watt, 1), status_pintu_db, power_status_db)
+        cursor.execute(query, values)
+        conn.commit()
+        print("[DATABASE] Monitoring log saved.")
+    except Exception as e:
+        print(f"[DATABASE] Insert Error -> {e}")
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+def shutdown_system(reason):
+    print(f"[SYSTEM] Shutdown dipanggil. Alasan: {reason}")
+    msg_shutdown = (
+        f"⚠️ SYSTEM SHUTDOWN ⚠️\n"
+        f"Alasan: {reason}\n"
+        f"Server akan dimatikan."
+    )
+    send_telegram_msg(msg_shutdown, is_urgent=True)
+    log_event("SYSTEM_SHUTDOWN", msg_shutdown, STATUS_BAHAYA)
+
+    alert_state.server_hidup = False
+
+    if "Listrik utama" in reason:
+        alert_state.shutdown_listrik_sent = True
+    elif "Overheat" in reason:
+        alert_state.shutdown_overheat_sent = True
+
+    if os.name == "nt":
+        os.system("shutdown /s /t 0")
+    else:
+        os.system("sudo shutdown -h now")
+
 STATUS_AMAN = 0
 STATUS_WARNING = 1
 STATUS_BAHAYA = 2
@@ -118,293 +252,52 @@ PINTU_TERBUKA = 1
 POWER_OFF = 0
 POWER_ON = 1
 
-
-# =========================================================
-# ALERT STATE
-# =========================================================
 class AlertState:
     suhu_tinggi = False
     suhu_rendah = False
-
     overheat_kritis = False
     waktu_overheat = 0
     shutdown_overheat_sent = False
-
+    
     lembab_tinggi = False
     lembab_rendah = False
-
+    
     daya_overload = False
-
-    arus_mati = False
-    waktu_arus_mati = 0
-    shutdown_arus_sent = False
-
+    
+    listrik_mati = False
+    waktu_listrik_mati = 0
+    shutdown_listrik_sent = False
+    
+    server_hidup = False
+    server_pernah_hidup = False
+    
     pintu_terbuka = False
     waktu_buka_pintu = 0
     alarm_pintu_sent = False
 
-
 alert_state = AlertState()
 
-
-# =========================================================
-# DATABASE CONNECTION
-# =========================================================
-def get_db_connection():
-    try:
-        conn = mysql.connector.connect(
-            host=DB_HOST,
-            user=DB_USER,
-            password=DB_PASS,
-            database=DB_NAME
-        )
-        return conn
-
-    except Error as e:
-        print(f"[DATABASE] Error -> {e}")
-        return None
-
-
-# =========================================================
-# SAFE FLOAT
-# =========================================================
-def safe_float(value, default=0.0):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-# =========================================================
-# TELEGRAM
-# =========================================================
-def send_telegram_msg(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": f"Monitoring Ruang Server\n\n{message}"
-    }
-
-    try:
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=5
-        )
-
-        if response.status_code != 200:
-            print(f"[TELEGRAM] Failed -> {response.text}")
-
-    except Exception as e:
-        print(f"[TELEGRAM] Error -> {e}")
-
-
-# =========================================================
-# EVENT LOGGER
-# =========================================================
-def log_event(event_type, deskripsi, status):
-    conn = get_db_connection()
-
-    if not conn:
-        return
-
-    try:
-        cursor = conn.cursor()
-
-        query = """
-            INSERT INTO event_logs
-            (
-                event_type,
-                deskripsi,
-                status
-            )
-            VALUES
-            (%s, %s, %s)
-        """
-
-        cursor.execute(
-            query,
-            (
-                event_type,
-                deskripsi,
-                status
-            )
-        )
-
-        conn.commit()
-
-        print(f"[EVENT] {event_type} dicatat.")
-
-    except Exception as e:
-        print(f"[EVENT] Error -> {e}")
-
-    finally:
-        try:
-            cursor.close()
-            conn.close()
-        except Exception:
-            pass
-
-
-# =========================================================
-# SIMPAN MONITORING LOG
-# =========================================================
-def save_monitoring_log(suhu, lembab, amper, watt, pintu):
-    conn = get_db_connection()
-
-    if not conn:
-        return
-
-    try:
-        cursor = conn.cursor()
-
-        query = """
-            INSERT INTO monitoring_logs
-            (
-                suhu,
-                kelembapan,
-                arus_listrik,
-                daya_watt,
-                status_pintu,
-                power_status
-            )
-            VALUES
-            (%s, %s, %s, %s, %s, %s)
-        """
-
-        status_pintu_db = (
-            PINTU_TERBUKA
-            if pintu == "terbuka"
-            else PINTU_TERTUTUP
-        )
-
-        power_status_db = (
-            POWER_OFF
-            if amper < AMPER_BAWAH
-            else POWER_ON
-        )
-
-        values = (
-            suhu,
-            lembab,
-            amper,
-            round(watt, 1),
-            status_pintu_db,
-            power_status_db
-        )
-
-        cursor.execute(query, values)
-
-        conn.commit()
-
-        print("[DATABASE] Monitoring log saved.")
-
-    except Exception as e:
-        print(f"[DATABASE] Insert Error -> {e}")
-
-    finally:
-        try:
-            cursor.close()
-            conn.close()
-        except Exception:
-            pass
-
-
-# =========================================================
-# SHUTDOWN SYSTEM
-# =========================================================
-def shutdown_system(reason):
-    print(f"[SYSTEM] Shutdown dipanggil. Alasan: {reason}")
-
-    if os.name == "nt":
-        os.system("shutdown /s /t 10")
-    else:
-        os.system("sudo shutdown -h now")
-
-
-# =========================================================
-# LOGIN MANAGER
-# =========================================================
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
-
-
-# =========================================================
-# USER MODEL
-# =========================================================
-class User(UserMixin):
-    def __init__(self, id, nama, email):
-        self.id = id
-        self.nama = nama
-        self.email = email
-
-
-# =========================================================
-# LOAD USER
-# =========================================================
-@login_manager.user_loader
-def load_user(user_id):
-    conn = get_db_connection()
-
-    if not conn:
-        return None
-
-    try:
-        cursor = conn.cursor(dictionary=True)
-
-        cursor.execute(
-            "SELECT * FROM users WHERE id=%s",
-            (user_id,)
-        )
-
-        user = cursor.fetchone()
-
-        if user:
-            return User(
-                id=user["id"],
-                nama=user["nama"],
-                email=user["email"]
-            )
-
-    except Exception as e:
-        print(f"[USER] Load Error -> {e}")
-
-    finally:
-        try:
-            cursor.close()
-            conn.close()
-        except Exception:
-            pass
-
-    return None
-
-
-# =========================================================
-# HANDLE SUHU
-# =========================================================
 def handle_suhu(suhu):
+    SUHU_ATAS = safe_float(get_setting('suhu_atas', '35.0'), 35.0)
+    SUHU_KRITIS = safe_float(get_setting('suhu_kritis', '40.0'), 40.0)
+    SUHU_BAWAH = safe_float(get_setting('suhu_bawah', '18.0'), 18.0)
+    DURASI_MAKS_OVERHEAT = safe_float(get_setting('durasi_maks_overheat', '300'), 300)
+
+    durasi_overheat_teks = format_durasi_teks(DURASI_MAKS_OVERHEAT)
+
     if suhu > SUHU_ATAS and not alert_state.suhu_tinggi:
         msg_text = (
-            f"PERINGATAN SUHU TINGGI\n"
-            f"Suhu ruang server mencapai {suhu:.1f} °C"
+            f"⚠️ PERINGATAN SUHU TINGGI\n"
+            f"Suhu ruang server mencapai {suhu:.1f} °C\n"
+            f"Batas aman: {SUHU_ATAS} °C"
         )
-
         send_telegram_msg(msg_text)
-        log_event("Suhu", msg_text, STATUS_WARNING)
-
+        log_event("SUHU_TINGGI", f"Suhu mencapai {suhu:.1f}°C", STATUS_WARNING)
         alert_state.suhu_tinggi = True
-
     elif suhu <= SUHU_ATAS and alert_state.suhu_tinggi:
-        msg_text = f"Suhu kembali normal: {suhu:.1f} °C"
-
+        msg_text = f"✅ Suhu kembali normal: {suhu:.1f} °C"
         send_telegram_msg(msg_text)
-        log_event("Suhu", msg_text, STATUS_AMAN)
-
+        log_event("SUHU_NORMAL", f"Suhu kembali normal: {suhu:.1f}°C", STATUS_AMAN)
         alert_state.suhu_tinggi = False
         alert_state.overheat_kritis = False
         alert_state.waktu_overheat = 0
@@ -413,278 +306,199 @@ def handle_suhu(suhu):
     if suhu >= SUHU_KRITIS:
         if not alert_state.overheat_kritis:
             msg_text = (
-                f"SUHU KRITIS\n"
+                f"🔥 SUHU KRITIS 🔥\n"
                 f"Suhu ruang server mencapai {suhu:.1f} °C\n"
-                f"Shutdown otomatis dalam 5 menit jika suhu tidak turun."
+                f"Shutdown otomatis dalam {durasi_overheat_teks}."
             )
-
-            send_telegram_msg(msg_text)
-            log_event("Suhu", msg_text, STATUS_BAHAYA)
-
+            send_telegram_msg(msg_text, is_urgent=True)
+            log_event("SUHU_KRITIS", f"Suhu kritis: {suhu:.1f}°C", STATUS_BAHAYA)
             alert_state.overheat_kritis = True
             alert_state.waktu_overheat = time.time()
             alert_state.shutdown_overheat_sent = False
-
         else:
             durasi_overheat = time.time() - alert_state.waktu_overheat
-
-            if (
-                durasi_overheat >= DURASI_MAKS_OVERHEAT
-                and
-                not alert_state.shutdown_overheat_sent
-            ):
-                msg_shutdown = (
-                    "OVERHEAT KRITIS\n"
-                    "Sistem melakukan shutdown otomatis "
-                    "untuk mencegah kerusakan server."
-                )
-
-                send_telegram_msg(msg_shutdown)
-                log_event("Sistem", msg_shutdown, STATUS_BAHAYA)
-
-                alert_state.shutdown_overheat_sent = True
-
-                shutdown_system("Overheat kritis")
+            if durasi_overheat >= DURASI_MAKS_OVERHEAT and not alert_state.shutdown_overheat_sent:
+                shutdown_system(f"Overheat kritis - Suhu melewati batas selama {durasi_overheat_teks}")
 
     if suhu < SUHU_BAWAH and not alert_state.suhu_rendah:
         msg_text = (
-            f"PERINGATAN SUHU RENDAH\n"
-            f"Suhu ruang server {suhu:.1f} °C"
+            f"❄️ PERINGATAN SUHU RENDAH\n"
+            f"Suhu ruang server {suhu:.1f} °C\n"
+            f"Batas aman: {SUHU_BAWAH} °C"
         )
-
         send_telegram_msg(msg_text)
-        log_event("Suhu", msg_text, STATUS_WARNING)
-
+        log_event("SUHU_RENDAH", f"Suhu rendah: {suhu:.1f}°C", STATUS_WARNING)
         alert_state.suhu_rendah = True
-
     elif suhu >= SUHU_BAWAH and alert_state.suhu_rendah:
-        msg_text = f"Suhu dingin kembali normal: {suhu:.1f} °C"
-
+        msg_text = f"✅ Suhu dingin kembali normal: {suhu:.1f} °C"
         send_telegram_msg(msg_text)
-        log_event("Suhu", msg_text, STATUS_AMAN)
-
+        log_event("SUHU_NORMAL", f"Suhu kembali normal: {suhu:.1f}°C", STATUS_AMAN)
         alert_state.suhu_rendah = False
 
-
-# =========================================================
-# HANDLE KELEMBAPAN
-# =========================================================
 def handle_kelembapan(lembab):
+    LEMBAB_ATAS = safe_float(get_setting('lembab_atas', '70.0'), 70.0)
+    LEMBAB_BAWAH = safe_float(get_setting('lembab_bawah', '30.0'), 30.0)
+
     if lembab > LEMBAB_ATAS and not alert_state.lembab_tinggi:
         msg_text = (
-            f"KELEMBAPAN TINGGI\n"
-            f"Kelembapan mencapai {lembab:.0f}%"
+            f"💧 KELEMBAPAN TINGGI\n"
+            f"Kelembapan mencapai {lembab:.0f}%\n"
+            f"Batas aman: {LEMBAB_ATAS}%"
         )
-
         send_telegram_msg(msg_text)
-        log_event("Kelembapan", msg_text, STATUS_WARNING)
-
+        log_event("KELEMBAPAN_TINGGI", f"Kelembapan tinggi: {lembab:.0f}%", STATUS_WARNING)
         alert_state.lembab_tinggi = True
-
     elif lembab <= LEMBAB_ATAS and alert_state.lembab_tinggi:
-        msg_text = f"Kelembapan kembali normal: {lembab:.0f}%"
-
+        msg_text = f"✅ Kelembapan kembali normal: {lembab:.0f}%"
         send_telegram_msg(msg_text)
-        log_event("Kelembapan", msg_text, STATUS_AMAN)
-
+        log_event("KELEMBAPAN_NORMAL", f"Kelembapan normal: {lembab:.0f}%", STATUS_AMAN)
         alert_state.lembab_tinggi = False
 
     if lembab < LEMBAB_BAWAH and not alert_state.lembab_rendah:
         msg_text = (
-            f"KELEMBAPAN RENDAH\n"
-            f"Kelembapan mencapai {lembab:.0f}%"
+            f"🏜️ KELEMBAPAN RENDAH\n"
+            f"Kelembapan mencapai {lembab:.0f}%\n"
+            f"Batas aman: {LEMBAB_BAWAH}%"
         )
-
         send_telegram_msg(msg_text)
-        log_event("Kelembapan", msg_text, STATUS_WARNING)
-
+        log_event("KELEMBAPAN_RENDAH", f"Kelembapan rendah: {lembab:.0f}%", STATUS_WARNING)
         alert_state.lembab_rendah = True
-
     elif lembab >= LEMBAB_BAWAH and alert_state.lembab_rendah:
-        msg_text = (
-            f"Kelembapan rendah kembali normal: {lembab:.0f}%"
-        )
-
+        msg_text = f"✅ Kelembapan rendah kembali normal: {lembab:.0f}%"
         send_telegram_msg(msg_text)
-        log_event("Kelembapan", msg_text, STATUS_AMAN)
-
+        log_event("KELEMBAPAN_NORMAL", f"Kelembapan normal: {lembab:.0f}%", STATUS_AMAN)
         alert_state.lembab_rendah = False
 
-
-# =========================================================
-# HANDLE LISTRIK
-# =========================================================
 def handle_listrik(amper, watt):
+    AMPER_BAWAH = safe_float(get_setting('amper_bawah', '0.190'), 0.190)
+    WATT_ATAS = safe_float(get_setting('watt_atas', '3500.0'), 3500.0)
+    DURASI_MAKS_ARUS_MATI = safe_float(get_setting('durasi_maks_arus_mati', '300'), 300)
+
+    durasi_listrik_teks = format_durasi_teks(DURASI_MAKS_ARUS_MATI)
+    current_time = time.time()
+    
     if amper < AMPER_BAWAH:
-        if not alert_state.arus_mati:
+        if not alert_state.listrik_mati:
             msg_text = (
-                f"LISTRIK PADAM\n"
+                f"⚠️ LISTRIK UTAMA PADAM ⚠️\n"
                 f"Arus terdeteksi: {amper:.2f} A\n"
-                f"Server akan shutdown otomatis dalam 5 menit."
+                f"Server akan shutdown otomatis dalam {durasi_listrik_teks}."
             )
-
-            send_telegram_msg(msg_text)
-            log_event("Listrik", msg_text, STATUS_BAHAYA)
-
-            alert_state.arus_mati = True
-            alert_state.waktu_arus_mati = time.time()
-            alert_state.shutdown_arus_sent = False
-            alert_state.daya_overload = False
-
+            send_telegram_msg(msg_text, is_urgent=True)
+            log_event("LISTRIK_PADAM", f"Listrik utama padam - Arus: {amper:.2f}A", STATUS_BAHAYA)
+            alert_state.listrik_mati = True
+            alert_state.waktu_listrik_mati = current_time
+            alert_state.shutdown_listrik_sent = False
         else:
-            durasi_mati = time.time() - alert_state.waktu_arus_mati
-
-            if (
-                durasi_mati >= DURASI_MAKS_ARUS_MATI
-                and
-                not alert_state.shutdown_arus_sent
-            ):
-                msg_shutdown = (
-                    "UPS HABIS\n"
-                    "Sistem melakukan shutdown server otomatis."
-                )
-
-                send_telegram_msg(msg_shutdown)
-                log_event("Sistem", msg_shutdown, STATUS_BAHAYA)
-
-                alert_state.shutdown_arus_sent = True
-
-                shutdown_system("Listrik padam / UPS habis")
-
-    elif watt > WATT_ATAS:
-        if not alert_state.daya_overload:
-            msg_text = (
-                f"BEBAN DAYA BERLEBIH\n"
-                f"Arus: {amper:.2f} A\n"
-                f"Daya: {watt:.1f} Watt"
-            )
-
-            send_telegram_msg(msg_text)
-            log_event("Listrik", msg_text, STATUS_BAHAYA)
-
-            alert_state.daya_overload = True
-            alert_state.arus_mati = False
-            alert_state.waktu_arus_mati = 0
-            alert_state.shutdown_arus_sent = False
-
+            durasi_mati = current_time - alert_state.waktu_listrik_mati
+            if durasi_mati >= DURASI_MAKS_ARUS_MATI and not alert_state.shutdown_listrik_sent:
+                shutdown_system(f"Listrik utama padam selama {durasi_listrik_teks}")
     else:
-        if alert_state.arus_mati or alert_state.daya_overload:
+        if alert_state.listrik_mati:
             msg_text = (
-                f"LISTRIK KEMBALI NORMAL\n"
-                f"Arus: {amper:.2f} A\n"
-                f"Daya: {watt:.1f} Watt\n"
+                f"✅ LISTRIK KEMBALI NORMAL ✅\n"
+                f"Arus terdeteksi: {amper:.2f} A\n"
                 f"Shutdown otomatis dibatalkan."
             )
-
             send_telegram_msg(msg_text)
-            log_event("Listrik", msg_text, STATUS_AMAN)
+            log_event("LISTRIK_NORMAL", f"Listrik kembali normal - Arus: {amper:.2f}A", STATUS_AMAN)
+            alert_state.listrik_mati = False
+            alert_state.waktu_listrik_mati = 0
+            alert_state.shutdown_listrik_sent = False
 
-            alert_state.arus_mati = False
-            alert_state.waktu_arus_mati = 0
-            alert_state.shutdown_arus_sent = False
-            alert_state.daya_overload = False
+        if not alert_state.server_hidup:
+            msg_text = (
+                f"✅ SERVER HIDUP ✅\n"
+                f"Arus terdeteksi: {amper:.2f} A\n"
+                f"Server berhasil dinyalakan dan beroperasi normal."
+            )
+            send_telegram_msg(msg_text)
+            log_event("SERVER_HIDUP", f"Server hidup - Arus: {amper:.2f}A", STATUS_AMAN)
+            alert_state.server_hidup = True
+            alert_state.server_pernah_hidup = True
 
+        if watt > WATT_ATAS:
+            if not alert_state.daya_overload:
+                msg_text = (
+                    f"⚡ BEBAN DAYA BERLEBIH ⚡\n"
+                    f"Arus: {amper:.2f} A\n"
+                    f"Daya: {watt:.1f} Watt\n"
+                    f"Batas aman: {WATT_ATAS} Watt"
+                )
+                send_telegram_msg(msg_text, is_urgent=True)
+                log_event("DAYA_OVERLOAD", f"Daya overload: {watt:.1f}W", STATUS_BAHAYA)
+                alert_state.daya_overload = True
+        else:
+            if alert_state.daya_overload:
+                msg_text = (
+                    f"✅ DAYA KEMBALI NORMAL\n"
+                    f"Arus: {amper:.2f} A\n"
+                    f"Daya: {watt:.1f} Watt"
+                )
+                send_telegram_msg(msg_text)
+                log_event("DAYA_NORMAL", f"Daya normal: {watt:.1f}W", STATUS_AMAN)
+                alert_state.daya_overload = False
 
-# =========================================================
-# HANDLE PINTU
-# =========================================================
 def handle_pintu(pintu, alarm_pintu_esp=False):
+    DURASI_MAKS_PINTU = safe_float(get_setting('durasi_maks_pintu', '300'), 300)
+    durasi_pintu_teks = format_durasi_teks(DURASI_MAKS_PINTU)
+
     is_pintu_terbuka = pintu == "terbuka"
 
     if is_pintu_terbuka != alert_state.pintu_terbuka:
         alert_state.pintu_terbuka = is_pintu_terbuka
-
         if is_pintu_terbuka:
-            status_msg = "PINTU RUANG SERVER DIBUKA"
-
-            send_telegram_msg(status_msg)
-            log_event("Keamanan", status_msg, STATUS_WARNING)
-
+            status_msg = "🚪 PINTU RUANG SERVER DIBUKA 🚪"
+            send_telegram_msg(status_msg, is_urgent=True)
+            log_event("PINTU_TERBUKA", "Pintu ruang server dibuka", STATUS_WARNING)
             alert_state.waktu_buka_pintu = time.time()
             alert_state.alarm_pintu_sent = False
-
         else:
-            status_msg = "PINTU RUANG SERVER DITUTUP"
-
+            status_msg = "✅ PINTU RUANG SERVER DITUTUP"
             send_telegram_msg(status_msg)
-            log_event("Keamanan", status_msg, STATUS_AMAN)
-
+            log_event("PINTU_TERTUTUP", "Pintu ruang server ditutup", STATUS_AMAN)
             alert_state.waktu_buka_pintu = 0
             alert_state.alarm_pintu_sent = False
 
     if alert_state.pintu_terbuka:
         durasi_pintu = time.time() - alert_state.waktu_buka_pintu
-
-        if (
-            durasi_pintu >= DURASI_MAKS_PINTU
-            or
-            alarm_pintu_esp
-        ):
+        if durasi_pintu >= DURASI_MAKS_PINTU or alarm_pintu_esp:
             if not alert_state.alarm_pintu_sent:
                 msg_pintu_lama = (
-                    "PERINGATAN KEAMANAN\n"
-                    "Pintu ruang server terbuka lebih dari 5 menit."
+                    "🔴 PERINGATAN KEAMANAN 🔴\n"
+                    f"Pintu ruang server terbuka lebih dari {durasi_pintu_teks}!"
                 )
-
-                send_telegram_msg(msg_pintu_lama)
-                log_event("Keamanan", msg_pintu_lama, STATUS_BAHAYA)
-
+                send_telegram_msg(msg_pintu_lama, is_urgent=True)
+                log_event("PINTU_ALARM", f"Pintu terbuka > {durasi_pintu_teks} - ALARM!", STATUS_BAHAYA)
                 alert_state.alarm_pintu_sent = True
 
-
-# =========================================================
-# MQTT CONNECT
-# =========================================================
 def on_mqtt_connect(client, userdata, flags, reason_code, properties=None):
     if reason_code == 0 or str(reason_code).lower() == "success":
         print(f"[MQTT] Connected -> {MQTT_BROKER}:{MQTT_PORT}")
-
         client.subscribe(MQTT_TOPIC)
-
         print(f"[MQTT] Subscribe -> {MQTT_TOPIC}")
-
     else:
         print(f"[MQTT] Failed Connect -> {reason_code}")
 
-
-# =========================================================
-# MQTT DISCONNECT
-# =========================================================
-def on_mqtt_disconnect(
-    client,
-    userdata,
-    disconnect_flags,
-    reason_code,
-    properties=None
-):
+def on_mqtt_disconnect(client, userdata, disconnect_flags, reason_code, properties=None):
     print(f"[MQTT] Disconnected -> {reason_code}")
 
-
-# =========================================================
-# MQTT MESSAGE
-# =========================================================
 def on_mqtt_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload.decode("utf-8"))
-
         suhu = safe_float(data.get("suhu"), 0)
         lembab = safe_float(data.get("lembab"), 0)
         amper = safe_float(data.get("amper"), 0)
         watt = safe_float(data.get("watt"), 0)
-
         pintu = str(data.get("pintu", "tertutup")).lower()
-
-        alarm_pintu_esp = (
-            str(data.get("alarm_pintu", "normal")).lower()
-            == "aktif"
-        )
+        alarm_pintu_esp = (str(data.get("alarm_pintu", "normal")).lower() == "aktif")
 
         print(
             f"[DATA] "
-            f"Suhu={suhu}°C | "
-            f"Lembab={lembab}% | "
-            f"Arus={amper}A | "
-            f"Daya={watt}W | "
+            f"Suhu={suhu:.1f}°C | "
+            f"Lembab={lembab:.1f}% | "
+            f"Arus={amper:.2f}A | "
+            f"Daya={watt:.1f}W | "
             f"Pintu={pintu} | "
             f"AlarmPintu={alarm_pintu_esp}"
         )
@@ -693,25 +507,13 @@ def on_mqtt_message(client, userdata, msg):
         handle_kelembapan(lembab)
         handle_listrik(amper, watt)
         handle_pintu(pintu, alarm_pintu_esp)
-
-        save_monitoring_log(
-            suhu=suhu,
-            lembab=lembab,
-            amper=amper,
-            watt=watt,
-            pintu=pintu
-        )
+        save_monitoring_log(suhu, lembab, amper, watt, pintu)
 
     except Exception as e:
         print(f"[ERROR MQTT MESSAGE] {e}")
 
-
-# =========================================================
-# MQTT WORKER
-# =========================================================
 def mqtt_worker():
     client_id = f"Flask_Monitor_{uuid.uuid4().hex[:8]}"
-
     print(f"[MQTT] Worker Started ID={client_id}")
 
     client = mqtt.Client(
@@ -721,58 +523,57 @@ def mqtt_worker():
     )
 
     if MQTT_USERNAME and MQTT_PASSWORD:
-        client.username_pw_set(
-            MQTT_USERNAME,
-            MQTT_PASSWORD
-        )
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
 
     client.on_connect = on_mqtt_connect
     client.on_disconnect = on_mqtt_disconnect
     client.on_message = on_mqtt_message
-
-    client.reconnect_delay_set(
-        min_delay=1,
-        max_delay=120
-    )
+    client.reconnect_delay_set(min_delay=1, max_delay=120)
 
     try:
-        client.connect_async(
-            MQTT_BROKER,
-            MQTT_PORT,
-            keepalive=30
-        )
-
-        client.loop_start()
-
-        while True:
-            time.sleep(1)
-
+        client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
+        print(f"[MQTT] Attempting connection to {MQTT_BROKER}:{MQTT_PORT}...")
+        client.loop_forever()
     except Exception as e:
         print(f"[MQTT] Fatal Error -> {e}")
-
     finally:
-        client.loop_stop()
         print("[MQTT] Worker Stopped")
 
-
-# =========================================================
-# START MQTT THREAD
-# =========================================================
 def start_mqtt_thread():
-    mqtt_thread = threading.Thread(
-        target=mqtt_worker,
-        daemon=True
-    )
-
+    mqtt_thread = threading.Thread(target=mqtt_worker, daemon=True)
     mqtt_thread.start()
 
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
 
-start_mqtt_thread()
+class User(UserMixin):
+    def __init__(self, id, nama, email):
+        self.id = id
+        self.nama = nama
+        self.email = email
 
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+        user = cursor.fetchone()
+        if user:
+            return User(id=user["id"], nama=user["nama"], email=user["email"])
+    except Exception as e:
+        print(f"[USER] Load Error -> {e}")
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+    return None
 
-# =========================================================
-# LOGIN
-# =========================================================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -781,209 +582,213 @@ def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
-
         conn = get_db_connection()
-
         if conn:
             try:
                 cursor = conn.cursor(dictionary=True)
-
-                cursor.execute(
-                    "SELECT * FROM users WHERE email=%s",
-                    (email,)
-                )
-
+                cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
                 user = cursor.fetchone()
-
-                if (
-                    user
-                    and
-                    check_password_hash(
-                        user["password"],
-                        password
-                    )
-                ):
-                    user_obj = User(
-                        id=user["id"],
-                        nama=user["nama"],
-                        email=user["email"]
-                    )
-
+                if user and check_password_hash(user["password"], password):
+                    user_obj = User(id=user["id"], nama=user["nama"], email=user["email"])
                     login_user(user_obj)
-
                     return redirect(url_for("index"))
-
                 flash("Email atau password salah.", "danger")
-
             except Exception as e:
                 print(f"[LOGIN] Error -> {e}")
                 flash("Terjadi kesalahan saat login.", "danger")
-
             finally:
                 try:
                     cursor.close()
                     conn.close()
                 except Exception:
                     pass
-
         else:
             flash("Database gagal terhubung.", "danger")
 
     return render_template("login.html")
 
-
-# =========================================================
-# LOGOUT
-# =========================================================
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
-
     return redirect(url_for("login"))
 
-
-# =========================================================
-# DASHBOARD
-# =========================================================
 @app.route("/")
 @login_required
 def index():
     return render_template("index.html")
 
-
-# =========================================================
-# LOGS
-# =========================================================
 @app.route("/logs")
 @login_required
 def logs():
     conn = get_db_connection()
-
     logs_data = []
-
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-
             cursor.execute("""
                 SELECT *
                 FROM monitoring_logs
                 ORDER BY created_at DESC
                 LIMIT 500
             """)
-
             logs_data = cursor.fetchall()
-
         except Exception as e:
             print(f"[LOGS] Error -> {e}")
-
         finally:
             try:
                 cursor.close()
                 conn.close()
             except Exception:
                 pass
+    return render_template("logs.html", logs=logs_data)
 
-    return render_template(
-        "logs.html",
-        logs=logs_data
-    )
-
-
-# =========================================================
-# EVENTS
-# =========================================================
 @app.route("/events")
 @login_required
 def events():
     conn = get_db_connection()
-
     events_data = []
-
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-
             cursor.execute("""
                 SELECT *
                 FROM event_logs
                 ORDER BY created_at DESC
                 LIMIT 300
             """)
-
             events_data = cursor.fetchall()
-
         except Exception as e:
             print(f"[EVENTS] Error -> {e}")
-
         finally:
             try:
                 cursor.close()
                 conn.close()
             except Exception:
                 pass
+    return render_template("events.html", events=events_data)
 
-    return render_template(
-        "events.html",
-        events=events_data
-    )
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    keys = [
+        'suhu_atas', 'suhu_kritis', 'suhu_bawah',
+        'lembab_atas', 'lembab_bawah',
+        'watt_atas', 'amper_bawah',
+        'durasi_maks_pintu', 'durasi_maks_arus_mati', 'durasi_maks_overheat'
+    ]
 
+    if request.method == "POST":
+        form_type = request.form.get("form_type")
 
-# =========================================================
-# API LATEST
-# =========================================================
+        # 1. Update Pengaturan Sensor & Durasi
+        if form_type == "settings_update":
+            for key in keys:
+                value = request.form.get(key)
+                if value is not None:
+                    update_setting(key, value.strip())
+            flash("Pengaturan sensor berhasil diperbarui.", "success")
+            return redirect(url_for("settings"))
+
+        # 2. Update Akun (Nama, Email, dan Password Opsional)
+        elif form_type == "profile_update":
+            nama = request.form.get("nama")
+            email = request.form.get("email")
+            current_pass = request.form.get("current_password")
+            new_pass = request.form.get("new_password")
+            confirm_pass = request.form.get("confirm_password")
+
+            try:
+                db = get_db_connection()
+                cursor = db.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
+                user_data = cursor.fetchone()
+
+                if not user_data:
+                    flash("Data pengguna tidak ditemukan.", "danger")
+                    return redirect(url_for("settings"))
+
+                # Tentukan nilai nama dan email (jika kosong, tetap gunakan data lama)
+                nama_update = nama.strip() if nama and nama.strip() else user_data["nama"]
+                email_update = email.strip() if email and email.strip() else user_data["email"]
+
+                # Logika jika user mengisi password baru (opsional)
+                if new_pass:
+                    if not current_pass:
+                        flash("Masukkan password saat ini untuk konfirmasi perubahan password.", "danger")
+                        return redirect(url_for("settings"))
+                    
+                    if not check_password_hash(user_data["password"], current_pass):
+                        flash("Password saat ini salah!", "danger")
+                        return redirect(url_for("settings"))
+
+                    if new_pass != confirm_pass:
+                        flash("Konfirmasi password baru tidak cocok!", "danger")
+                        return redirect(url_for("settings"))
+
+                    hashed_pass = generate_password_hash(new_pass)
+                    query = "UPDATE users SET nama = %s, email = %s, password = %s WHERE id = %s"
+                    cursor.execute(query, (nama_update, email_update, hashed_pass, current_user.id))
+                else:
+                    query = "UPDATE users SET nama = %s, email = %s WHERE id = %s"
+                    cursor.execute(query, (nama_update, email_update, current_user.id))
+
+                db.commit()
+                flash("Profil pengguna berhasil diperbarui.", "success")
+            except Exception as e:
+                flash(f"Gagal memperbarui profil: {e}", "danger")
+            finally:
+                if 'cursor' in locals(): cursor.close()
+                if 'db' in locals() and db.is_connected(): db.close()
+
+            return redirect(url_for("settings"))
+
+    load_settings()
+    current = {k: _settings_cache.get(k, '') for k in keys}
+    return render_template("settings.html", settings=current)
+
 @app.route("/api/latest")
 @login_required
 def api_latest():
     conn = get_db_connection()
-
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-
             cursor.execute("""
                 SELECT *
                 FROM monitoring_logs
                 ORDER BY id DESC
                 LIMIT 1
             """)
-
             latest = cursor.fetchone()
-
             if latest:
-                latest["created_at"] = (
-                    latest["created_at"]
-                    .strftime("%Y-%m-%d %H:%M:%S")
-                )
-
+                latest["created_at"] = latest["created_at"].strftime("%Y-%m-%d %H:%M:%S")
                 return jsonify(latest)
-
         except Exception as e:
             print(f"[API LATEST] Error -> {e}")
-
         finally:
             try:
                 cursor.close()
                 conn.close()
             except Exception:
                 pass
+    return jsonify({
+        "suhu": 0,
+        "kelembapan": 0,
+        "arus_listrik": 0,
+        "daya_watt": 0,
+        "status_pintu": 0,
+        "power_status": 0,
+        "created_at": "-"
+    })
 
-    return jsonify({})
-
-
-# =========================================================
-# API CHART
-# =========================================================
 @app.route("/api/chart")
 @login_required
 def api_chart():
     conn = get_db_connection()
-
     if conn:
         try:
             cursor = conn.cursor(dictionary=True)
-
             cursor.execute("""
                 SELECT *
                 FROM
@@ -995,56 +800,37 @@ def api_chart():
                 ) sub
                 ORDER BY id ASC
             """)
-
             records = cursor.fetchall()
-
             data = {
-                "labels": [
-                    r["created_at"].strftime("%H:%M")
-                    for r in records
-                ],
-                "suhu": [
-                    float(r["suhu"])
-                    for r in records
-                ],
-                "watt": [
-                    float(r["daya_watt"])
-                    for r in records
-                ],
-                "amper": [
-                    float(r["arus_listrik"])
-                    for r in records
-                ]
+                "labels": [r["created_at"].strftime("%H:%M") for r in records],
+                "suhu": [float(r["suhu"]) for r in records],
+                "watt": [float(r["daya_watt"]) for r in records],
+                "amper": [float(r["arus_listrik"]) for r in records]
             }
-
             return jsonify(data)
-
         except Exception as e:
             print(f"[API CHART] Error -> {e}")
-
         finally:
             try:
                 cursor.close()
                 conn.close()
             except Exception:
                 pass
+    return jsonify({"labels": [], "suhu": [], "watt": [], "amper": []})
 
-    return jsonify({})
-
-
-# =========================================================
-# MAIN
-# =========================================================
 if __name__ == "__main__":
     print(f"[FLASK] Running {APP_HOST}:{APP_PORT}")
 
-    db_test = get_db_connection()
+    load_settings()
 
+    db_test = get_db_connection()
     if db_test:
         print("[DATABASE] Connected")
         db_test.close()
     else:
         print("[DATABASE] Failed")
+
+    start_mqtt_thread()
 
     app.run(
         debug=True,

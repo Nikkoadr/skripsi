@@ -15,6 +15,11 @@ const char* MQTT_TOPIC  = "220511203/monitoring/server/data";
 const char* MQTT_USER   = "nikkoadr";
 const char* MQTT_PASS   = "1234567800";
 
+// ========== TAMBAHAN: Variabel Device ==========
+const char* DEVICE_NAME   = "alat1";
+const char* DEVICE_STATUS = "online";
+// ===============================================
+
 #define PIN_SCT       34
 #define PIN_DHT       23
 #define PIN_PINTU     18
@@ -264,7 +269,7 @@ void publishMQTT() {
   bacaSensorDHT();
 
   if (mqtt.connected()) {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<300> doc;
 
     float suhuBulat = round(suhu * 10.0) / 10.0;
     float lembabBulat = round(lembab * 10.0) / 10.0;
@@ -278,7 +283,10 @@ void publishMQTT() {
     doc["pintu"]  = statusPintu ? "terbuka" : "tertutup";
     doc["alarm_pintu"] = alarmPintu ? "aktif" : "normal";
 
-    char buffer[256];
+    doc["device_name"]   = DEVICE_NAME;
+    doc["device_status"] = DEVICE_STATUS;
+
+    char buffer[300];
     serializeJson(doc, buffer);
 
     mqtt.publish(MQTT_TOPIC, buffer);

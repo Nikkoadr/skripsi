@@ -6,24 +6,15 @@
 #include <ArduinoJson.h>
 #include "DHT.h"
 
-// =========================================================
-// WIFI CONFIG
-// =========================================================
 const char* WIFI_SSID = "Nikko Adrian";
 const char* WIFI_PASS = "konci123";
 
-// =========================================================
-// MQTT CONFIG
-// =========================================================
 const char* MQTT_BROKER = "172.20.10.2";
 const int   MQTT_PORT   = 1883;
 const char* MQTT_TOPIC  = "220511203/monitoring/server/data";
 const char* MQTT_USER   = "nikkoadr";
 const char* MQTT_PASS   = "1234567800";
 
-// =========================================================
-// PIN CONFIG
-// =========================================================
 #define PIN_SCT       34
 #define PIN_DHT       23
 #define PIN_PINTU     18
@@ -32,49 +23,41 @@ const char* MQTT_PASS   = "1234567800";
 #define PIN_SCL       22
 #define LED_BUILTIN   2
 
-// =========================================================
-// SENSOR CONFIG
-// =========================================================
 #define DHT_TYPE             DHT22
-#define CALIBRATION_FACTOR   71.22
-#define NOISE_THRESHOLD      0.40
 #define VOLTAGE_PLN          220.0
+
 #define ADC_VREF             3.3
 #define ADC_RES              4095.0
-#define CURRENT_SAMPLES      500
-#define SAMPLING_PERIOD      150
 
-// =========================================================
-// OLED CONFIG
-// =========================================================
+#define CALIBRATION_FACTOR   78.0
+#define OFFSET_CORRECTION    0.03
+
+#define RMS_SAMPLES          2000
+#define OVERSAMPLE           4
+#define FILTER_SIZE          5
+#define DEADBAND_THRESHOLD   0.02
+#define AMPER_BAWAH          0.190
+
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   64
 #define OLED_RESET      -1
 #define SCREEN_ADDRESS  0x3C
 
-// =========================================================
-// TIMER CONFIG
-// =========================================================
 const unsigned long INTERVAL_MQTT_SEND   = 2000;
 const unsigned long INTERVAL_OLED_UPDATE = 1000;
 const unsigned long INTERVAL_RECONNECT   = 5000;
 const unsigned long AMBANG_WAKTU_PINTU   = 300000; // 5 menit
 
-// =========================================================
-// OBJECT INIT
-// =========================================================
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 DHT dht(PIN_DHT, DHT_TYPE);
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
-// =========================================================
-// GLOBAL VARIABLE
-// =========================================================
 float suhu     = 0.0;
 float lembab   = 0.0;
 float arusRMS  = 0.0;
 float dayaWatt = 0.0;
+float arusRaw   = 0.0;
 
 bool statusPintu = false;
 bool alarmPintu  = false;
@@ -84,9 +67,11 @@ unsigned long lastOLEDUpdate       = 0;
 unsigned long lastReconnectAttempt = 0;
 unsigned long waktuPintuTerbuka    = 0;
 
-// =========================================================
-// SETUP WIFI
-// =========================================================
+uint16_t adcBuffer[RMS_SAMPLES];
+float rmsHistory[FILTER_SIZE];
+uint8_t filterIndex = 0;
+bool filterFull = false;
+
 void setupWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
 
@@ -113,9 +98,6 @@ void setupWiFi() {
   }
 }
 
-// =========================================================
-// RECONNECT MQTT
-// =========================================================
 bool reconnectMQTT() {
   if (mqtt.connected()) return true;
 
@@ -135,9 +117,6 @@ bool reconnectMQTT() {
   return false;
 }
 
-// =========================================================
-// BACA SENSOR DHT22
-// =========================================================
 void bacaSensorDHT() {
   float suhuBaca   = dht.readTemperature();
   float lembabBaca = dht.readHumidity();
@@ -151,47 +130,83 @@ void bacaSensorDHT() {
   }
 }
 
-// =========================================================
-// BACA SENSOR ARUS SCT-013
-// =========================================================
 void bacaSensorArus() {
-  float midpoint = 0.0;
-  float sumV     = 0.0;
-  uint32_t n     = 0;
 
-  for (int i = 0; i < CURRENT_SAMPLES; i++) {
-    midpoint += analogRead(PIN_SCT);
+  uint32_t totalADC = 0;
+
+  for (int i = 0; i < RMS_SAMPLES; i++) {
+    uint32_t oversample = 0;
+
+    for (int j = 0; j < OVERSAMPLE; j++) {
+      oversample += analogRead(PIN_SCT);
+    }
+
+    adcBuffer[i] = oversample / OVERSAMPLE;
+    totalADC += adcBuffer[i];
+
+    delayMicroseconds(120);
   }
 
-  midpoint /= (float) CURRENT_SAMPLES;
+  float midpoint = (float)totalADC / RMS_SAMPLES;
 
-  uint32_t startTime = millis();
+  double sumSquare = 0;
 
-  while ((millis() - startTime) < SAMPLING_PERIOD) {
-    int raw = analogRead(PIN_SCT);
-
-    float voltage = (raw - midpoint) * ADC_VREF / ADC_RES;
-
-    sumV += voltage * voltage;
-    n++;
+  for (int i = 0; i < RMS_SAMPLES; i++) {
+    float voltage = (adcBuffer[i] - midpoint);
+    voltage *= ADC_VREF;
+    voltage /= ADC_RES;
+    sumSquare += voltage * voltage;
   }
 
-  if (n == 0) {
-    arusRMS  = 0.0;
-    dayaWatt = 0.0;
-    return;
+  float vrms = sqrt(sumSquare / RMS_SAMPLES);
+  
+  float current = vrms * CALIBRATION_FACTOR;
+  
+  if (current > 0) {
+    current = current - OFFSET_CORRECTION;
+  }
+  
+  arusRaw = current;
+
+  rmsHistory[filterIndex] = current;
+  filterIndex++;
+
+  if (filterIndex >= FILTER_SIZE) {
+    filterIndex = 0;
+    filterFull = true;
   }
 
-  float vRMS  = sqrt(sumV / n);
-  float iCalc = vRMS * CALIBRATION_FACTOR;
+  uint8_t jumlah = filterFull ? FILTER_SIZE : filterIndex;
+  float total = 0;
 
-  arusRMS = (iCalc < NOISE_THRESHOLD) ? 0.0 : iCalc;
+  for (int i = 0; i < jumlah; i++) {
+    total += rmsHistory[i];
+  }
+
+  current = total / jumlah;
+
+  if (current < DEADBAND_THRESHOLD) {
+    current = 0;
+  }
+
+  if (current < AMPER_BAWAH) {
+    current = 0;
+  }
+
+  arusRMS = current;
   dayaWatt = arusRMS * VOLTAGE_PLN;
+  
+  static unsigned long lastDebugPrint = 0;
+  if (millis() - lastDebugPrint > 3000) {
+    Serial.print("[DEBUG] Raw: ");
+    Serial.print(arusRaw, 2);
+    Serial.print(" A | Filtered: ");
+    Serial.print(arusRMS, 2);
+    Serial.println(" A");
+    lastDebugPrint = millis();
+  }
 }
 
-// =========================================================
-// BACA STATUS PINTU DAN ALARM
-// =========================================================
 void handleSecurity() {
   statusPintu = (digitalRead(PIN_PINTU) == HIGH);
 
@@ -208,7 +223,6 @@ void handleSecurity() {
 
   if (alarmPintu) {
     bool blinkState = (millis() / 500) % 2;
-
     digitalWrite(LED_BUILTIN, blinkState);
     digitalWrite(PIN_BUZZER, blinkState);
   } else {
@@ -217,9 +231,6 @@ void handleSecurity() {
   }
 }
 
-// =========================================================
-// UPDATE OLED
-// =========================================================
 void updateOLED() {
   if (millis() - lastOLEDUpdate < INTERVAL_OLED_UPDATE) return;
 
@@ -247,9 +258,6 @@ void updateOLED() {
   lastOLEDUpdate = millis();
 }
 
-// =========================================================
-// PUBLISH MQTT
-// =========================================================
 void publishMQTT() {
   if (millis() - lastMqttSend < INTERVAL_MQTT_SEND) return;
 
@@ -258,10 +266,15 @@ void publishMQTT() {
   if (mqtt.connected()) {
     StaticJsonDocument<256> doc;
 
-    doc["suhu"]   = suhu;
-    doc["lembab"] = lembab;
-    doc["amper"]  = arusRMS;
-    doc["watt"]   = dayaWatt;
+    float suhuBulat = round(suhu * 10.0) / 10.0;
+    float lembabBulat = round(lembab * 10.0) / 10.0;
+    float amperBulat = round(arusRMS * 100.0) / 100.0;
+    float wattBulat = round(dayaWatt * 10.0) / 10.0;
+
+    doc["suhu"]   = suhuBulat;
+    doc["lembab"] = lembabBulat;
+    doc["amper"]  = amperBulat;
+    doc["watt"]   = wattBulat;
     doc["pintu"]  = statusPintu ? "terbuka" : "tertutup";
     doc["alarm_pintu"] = alarmPintu ? "aktif" : "normal";
 
@@ -279,11 +292,14 @@ void publishMQTT() {
   lastMqttSend = millis();
 }
 
-// =========================================================
-// SETUP
-// =========================================================
 void setup() {
   Serial.begin(115200);
+  
+  Serial.println(F("\n\n========================================"));
+  Serial.println(F("  SCT-013 CALIBRATION MODE"));
+  Serial.println(F("========================================"));
+  Serial.println(F("Tuning CALIBRATION_FACTOR dan OFFSET_CORRECTION"));
+  Serial.println(F("========================================\n"));
 
   Wire.begin(PIN_SDA, PIN_SCL);
 
@@ -316,11 +332,12 @@ void setup() {
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
 
   Serial.println(F("[SYSTEM] Node Monitoring Ruang Server Aktif!"));
+  Serial.println(F("\n[INFO] Gunakan Serial Monitor untuk kalibrasi"));
+  Serial.println(F("[INFO] Bandingkan dengan tang amper"));
+  Serial.println(F("[INFO] Sesuaikan CALIBRATION_FACTOR & OFFSET_CORRECTION\n"));
 }
 
-// =========================================================
-// LOOP
-// =========================================================
+
 void loop() {
   unsigned long now = millis();
 

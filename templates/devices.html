@@ -1,0 +1,231 @@
+{% extends "base.html" %} {% block title %}Daftar Perangkat{% endblock %} {%
+block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="fw-bold mb-0">📡 Manajemen Perangkat</h3>
+    <p class="text-secondary mb-0">
+      Kelola perangkat ESP32 yang terdaftar di sistem
+    </p>
+  </div>
+  <button
+    class="btn btn-primary"
+    data-bs-toggle="modal"
+    data-bs-target="#modalDevice"
+    onclick="resetModalForm()"
+  >
+    <i class="bi bi-plus-circle"></i> Tambah Perangkat
+  </button>
+</div>
+
+<!-- Daftar Perangkat -->
+<div class="glass-card p-4">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nama Perangkat</th>
+          <th>Status</th>
+          <th>Terakhir Terlihat</th>
+          <th>Dibuat</th>
+          <th class="text-center">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices %}
+        <tr>
+          <td>{{ device.id }}</td>
+          <td><strong>{{ device.name }}</strong></td>
+          <td>
+            {% if device.status == 'online' %}
+            <span class="badge bg-success">Online</span>
+            {% else %}
+            <span class="badge bg-secondary">Offline</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if device.last_seen %} {{ device.last_seen.strftime('%Y-%m-%d
+            %H:%M:%S') }} {% else %}
+            <span class="text-secondary">Belum pernah</span>
+            {% endif %}
+          </td>
+          <td>{{ device.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="text-center">
+            <button
+              class="btn btn-sm btn-outline-primary me-1 fa-solid fa-pencil"
+              data-bs-toggle="modal"
+              data-bs-target="#modalDevice"
+              onclick="editDevice({{ device.id }}, '{{ device.name }}', '{{ device.status }}')"
+            >
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger fa-solid fa-trash"
+              data-bs-toggle="modal"
+              data-bs-target="#modalDelete"
+              onclick="setDeleteId({{ device.id }})"
+            >
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-secondary py-3">
+            Belum ada perangkat yang terdaftar.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL TAMBAH / EDIT PERANGKAT                                 -->
+<!-- ============================================================ -->
+<div class="modal fade" id="modalDevice" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content glass-card">
+      <form method="POST" id="deviceForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalDeviceTitle">Tambah Perangkat</h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Tutup"
+          ></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="deviceName" class="form-label">Nama Perangkat</label>
+            <input
+              type="text"
+              class="form-control"
+              id="deviceName"
+              name="name"
+              placeholder="Contoh: ESP32_Ruangan"
+              required
+            />
+            <div class="form-text">Nama harus unik dan dikenali di sistem.</div>
+          </div>
+          <div class="mb-3">
+            <label for="deviceStatus" class="form-label">Status Awal</label>
+            <select class="form-select" id="deviceStatus" name="status">
+              <option value="online">Online</option>
+              <option value="offline" selected>Offline</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            data-bs-dismiss="modal"
+          >
+            Batal
+          </button>
+          <button type="submit" class="btn btn-primary" id="modalDeviceSubmit">
+            Simpan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL KONFIRMASI HAPUS                                        -->
+<!-- ============================================================ -->
+<div class="modal fade" id="modalDelete" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger">⚠️ Konfirmasi Hapus</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Tutup"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <p>Apakah Anda yakin ingin menghapus perangkat ini?</p>
+        <p class="text-secondary small">
+          Data log yang terkait tidak akan hilang (device_id akan menjadi NULL).
+        </p>
+      </div>
+      <div class="modal-footer">
+        <form method="POST" id="deleteForm">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            data-bs-dismiss="modal"
+          >
+            Batal
+          </button>
+          <button type="submit" class="btn btn-danger">Hapus</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function resetModalForm() {
+    document.getElementById("deviceForm").action =
+      "{{ url_for('add_device') }}";
+    document.getElementById("modalDeviceTitle").innerText = "Tambah Perangkat";
+    document.getElementById("modalDeviceSubmit").innerText = "Simpan";
+    document.getElementById("deviceName").value = "";
+    document.getElementById("deviceStatus").value = "offline";
+    const oldId = document.querySelector('#deviceForm input[name="id"]');
+    if (oldId) oldId.remove();
+  }
+
+  function editDevice(id, name, status) {
+    const actionUrl = "{{ url_for('edit_device', device_id=0) }}".replace(
+      "0",
+      id,
+    );
+    document.getElementById("deviceForm").action = actionUrl;
+    document.getElementById("modalDeviceTitle").innerText = "Edit Perangkat";
+    document.getElementById("modalDeviceSubmit").innerText = "Perbarui";
+    document.getElementById("deviceName").value = name;
+    document.getElementById("deviceStatus").value = status;
+    let hiddenId = document.querySelector('#deviceForm input[name="id"]');
+    if (!hiddenId) {
+      hiddenId = document.createElement("input");
+      hiddenId.type = "hidden";
+      hiddenId.name = "id";
+      document.getElementById("deviceForm").appendChild(hiddenId);
+    }
+    hiddenId.value = id;
+  }
+
+  function setDeleteId(id) {
+    const actionUrl = "{{ url_for('delete_device', device_id=0) }}".replace(
+      "0",
+      id,
+    );
+    document.getElementById("deleteForm").action = actionUrl;
+  }
+
+  document
+    .getElementById("modalDevice")
+    .addEventListener("hidden.bs.modal", function () {
+    });
+</script>
+
+<style>
+  .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+</style>
+{% endblock %}

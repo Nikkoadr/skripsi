@@ -52,6 +52,7 @@ block head %}
       <thead>
         <tr>
           <th>Waktu</th>
+          <th>Device</th>
           <th>Suhu</th>
           <th>Kelembapan</th>
           <th>Arus</th>
@@ -69,6 +70,14 @@ block head %}
               {{ log.created_at.strftime('%d-%m-%Y %H:%M') if log.created_at
               else '-' }}
             </span>
+          </td>
+
+          <td>
+            {% if log.device_name %}
+            <span class="badge bg-info text-dark">{{ log.device_name }}</span>
+            {% else %}
+            <span class="text-secondary">-</span>
+            {% endif %}
           </td>
 
           <td>

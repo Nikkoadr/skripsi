@@ -4,7 +4,6 @@ head %}
   href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css"
   rel="stylesheet"
 />
-
 <link
   href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css"
   rel="stylesheet"
@@ -93,6 +92,7 @@ head %}
           <th>Waktu</th>
           <th>Jenis Event</th>
           <th>Deskripsi</th>
+          <th>Device</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -114,6 +114,18 @@ head %}
           </td>
 
           <td>{{ event.deskripsi if event.deskripsi else '-' }}</td>
+
+          <td style="min-width: 120px">
+            {% if event.device_name %}
+            <span
+              class="badge bg-info text-dark rounded-pill px-3 py-2 badge-status"
+            >
+              {{ event.device_name }}
+            </span>
+            {% else %}
+            <span class="text-secondary">-</span>
+            {% endif %}
+          </td>
 
           <td style="min-width: 120px">
             {% if event.status == 2 %}
@@ -171,7 +183,7 @@ head %}
           className: "btn-export-excel",
           title: "Event_Logs_" + new Date().toLocaleDateString("id-ID"),
           exportOptions: {
-            columns: [0, 1, 2, 3],
+            columns: [0, 1, 2, 3, 4], // semua kolom termasuk Perangkat
           },
         },
       ],

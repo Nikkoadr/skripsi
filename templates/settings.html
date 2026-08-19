@@ -3,12 +3,19 @@ block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h3 class="fw-bold mb-0">⚙️ Pengaturan Sistem</h3>
-    <p class="text-secondary mb-0">Ubah ambang batas sensor dan durasi waktu</p>
+    <p class="text-secondary mb-0">
+      Ubah ambang batas sensor, durasi waktu, dan akun pengguna
+    </p>
   </div>
 </div>
 
-<div class="glass-card p-4">
-  <form method="POST">
+<!-- ================= FORM PENGATURAN PARAMETER SENSOR ================= -->
+<div class="glass-card p-4 mb-4">
+  <h4 class="fw-bold mb-3 border-bottom pb-2">
+    🎛️ Ambang Batas Parameter & Mitigasi
+  </h4>
+  <form method="POST" action="{{ url_for('settings') }}">
+    <input type="hidden" name="form_type" value="settings_update" />
     <div class="row">
       <div class="col-md-6">
         <h5 class="border-bottom pb-2 mb-3">🌡️ Suhu</h5>
@@ -37,8 +44,7 @@ block content %}
             required
           />
           <div class="form-text">
-            Shutdown otomatis jika suhu melewati batas ini selama durasi
-            tertentu.
+            Shutdown otomatis jika suhu melewati batas ini.
           </div>
         </div>
         <div class="mb-3">
@@ -123,7 +129,7 @@ block content %}
             required
           />
           <div class="form-text">
-            Jika arus di bawah nilai ini, dianggap listrik utama padam.
+            Jika arus di bawah nilai ini, listrik dianggap padam.
           </div>
         </div>
 
@@ -157,7 +163,7 @@ block content %}
             required
           />
           <div class="form-text">
-            Jika listrik padam melebihi durasi ini, server akan shutdown.
+            Jika listrik padam melebihi durasi ini, server otomatis shutdown.
           </div>
         </div>
         <div class="mb-3">
@@ -173,7 +179,7 @@ block content %}
             required
           />
           <div class="form-text">
-            Jika suhu kritis bertahan selama durasi ini, server akan shutdown.
+            Jika suhu kritis bertahan selama durasi ini, server shutdown.
           </div>
         </div>
       </div>
@@ -181,7 +187,89 @@ block content %}
 
     <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
       <button type="submit" class="btn btn-primary">
-        <i class="bi bi-save"></i> Simpan Pengaturan
+        <i class="bi bi-save"></i> Simpan Pengaturan Sensor
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- ================= FORM PENGATURAN AKUN PENGGUNA ================= -->
+<div class="glass-card p-4">
+  <h4 class="fw-bold mb-3 border-bottom pb-2">👤 Profil & Keamanan Akun</h4>
+  <form method="POST" action="{{ url_for('settings') }}">
+    <input type="hidden" name="form_type" value="profile_update" />
+    <div class="row">
+      <div class="col-md-6">
+        <h5 class="border-bottom pb-2 mb-3">Informasi Akun</h5>
+        <div class="mb-3">
+          <label for="nama" class="form-label">Nama Lengkap</label>
+          <input
+            type="text"
+            class="form-control"
+            id="nama"
+            name="nama"
+            value="{{ current_user.nama }}"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="email" class="form-label">Alamat Email</label>
+          <input
+            type="email"
+            class="form-control"
+            id="email"
+            name="email"
+            value="{{ current_user.email }}"
+            required
+          />
+          <div class="form-text">
+            Digunakan sebagai kredensial login ke dashboard.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <h5 class="border-bottom pb-2 mb-3">Ubah Password</h5>
+        <div class="mb-3">
+          <label for="current_password" class="form-label"
+            >Password Saat Ini</label
+          >
+          <input
+            type="password"
+            class="form-control"
+            id="current_password"
+            name="current_password"
+            placeholder="Masukkan password lama untuk konfirmasi"
+          />
+        </div>
+        <div class="mb-3">
+          <label for="new_password" class="form-label">Password Baru</label>
+          <input
+            type="password"
+            class="form-control"
+            id="new_password"
+            name="new_password"
+            placeholder="Kosongkan jika tidak ingin mengubah password"
+          />
+        </div>
+        <div class="mb-3">
+          <label for="confirm_password" class="form-label"
+            >Konfirmasi Password Baru</label
+          >
+          <input
+            type="password"
+            class="form-control"
+            id="confirm_password"
+            name="confirm_password"
+            placeholder="Ulangi password baru"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+      <button type="submit" class="btn btn-warning text-dark fw-semibold">
+        <i class="bi bi-shield-lock"></i> Perbarui Akun
       </button>
     </div>
   </form>
